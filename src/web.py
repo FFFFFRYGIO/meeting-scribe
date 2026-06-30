@@ -142,25 +142,28 @@ def _locate_media(meeting: store.Meeting) -> Path | None:
     return None
 
 
-def _run_pipeline(meeting_name: str) -> None:
+def _run_pipeline(meeting_name: str, force: bool = False) -> None:
     """Background job: transcribe (if needed) + summarise, updating the status.
 
-    Resumable: if a transcript already exists we only (re)summarise; otherwise we
-    process from the stored audio/upload. Long recordings can take minutes, so
-    this runs off the request path (threadpool task or recovery thread).
+    ``force=True`` (manual Reprocess) re-transcribes from the stored audio so a
+    new model/language takes effect. ``force=False`` (upload, restart recovery)
+    resumes: if a transcript already exists it only (re)summarises. Long
+    recordings can take minutes, so this runs off the request path.
     """
     meeting = store.get_meeting(meeting_name)
     if meeting is None:
         return
     try:
-        if meeting.transcript_text().strip():
+        media = _locate_media(meeting)
+        if force and media is not None:
+            process_meeting(meeting, media)  # redo transcription with current settings
+        elif meeting.transcript_text().strip():
             summarize_meeting(meeting)  # transcript already done — only the summary remains
-        else:
-            media = _locate_media(meeting)
-            if media is None:
-                meeting.update(status="error", error="Source file is missing — please re-upload.")
-                return
+        elif media is not None:
             process_meeting(meeting, media)
+        else:
+            meeting.update(status="error", error="Source file is missing — please re-upload.")
+            return
         meeting.update(status="done", error="")
     except Exception as exc:  # noqa: BLE001 — record the failure for the UI
         meeting.update(status="error", error=str(exc))
@@ -204,7 +207,7 @@ def meeting_reprocess(name: str, background_tasks: BackgroundTasks) -> RedirectR
     if meeting is None:
         return RedirectResponse(url="/", status_code=303)
     meeting.update(status="processing", error="")
-    background_tasks.add_task(_run_pipeline, meeting.name)
+    background_tasks.add_task(_run_pipeline, meeting.name, True)  # force re-transcription
     return RedirectResponse(url=f"/meeting/{meeting.name}", status_code=303)
 
 

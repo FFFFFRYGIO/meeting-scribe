@@ -141,6 +141,27 @@ def test_reprocess_only_summarises_when_transcript_exists(client, monkeypatch):
     assert store.get_meeting(m.name).status == "done"
 
 
+def test_reprocess_forces_retranscription_when_audio_exists(client, monkeypatch):
+    m = store.create_meeting(title="Redo with better model", status="done")
+    store.save_transcript(m, "old transcript")
+    m.audio_path.write_bytes(b"fake-audio")  # audio present → force re-transcribe
+
+    called = {"summarize": 0, "process": 0}
+
+    def fake_summarize(meeting, *a, **k):
+        called["summarize"] += 1
+
+    def fake_process(meeting, media, *a, **k):
+        called["process"] += 1
+
+    monkeypatch.setattr(web, "summarize_meeting", fake_summarize)
+    monkeypatch.setattr(web, "process_meeting", fake_process)
+
+    client.post(f"/meeting/{m.name}/reprocess", follow_redirects=False)
+    # Audio present → full pipeline (re-transcribe), not summary-only.
+    assert called == {"summarize": 0, "process": 1}
+
+
 def test_reprocess_marks_error_when_source_missing(client):
     m = store.create_meeting(title="Nothing to process", status="processing")
     resp = client.post(f"/meeting/{m.name}/reprocess", follow_redirects=False)
