@@ -119,6 +119,36 @@ def test_processing_meeting_page_auto_refreshes(client):
     assert 'http-equiv="refresh"' in body and "Processing" in body
 
 
+def test_reprocess_only_summarises_when_transcript_exists(client, monkeypatch):
+    m = store.create_meeting(title="Has transcript", status="error")
+    store.save_transcript(m, "some transcript text")
+
+    called = {"summarize": 0, "process": 0}
+
+    def fake_summarize(meeting, *a, **k):
+        called["summarize"] += 1
+
+    def fake_process(*a, **k):
+        called["process"] += 1
+
+    monkeypatch.setattr(web, "summarize_meeting", fake_summarize)
+    monkeypatch.setattr(web, "process_meeting", fake_process)
+
+    resp = client.post(f"/meeting/{m.name}/reprocess", follow_redirects=False)
+    assert resp.status_code == 303
+    # Transcript present → only the summary step runs, full pipeline skipped.
+    assert called == {"summarize": 1, "process": 0}
+    assert store.get_meeting(m.name).status == "done"
+
+
+def test_reprocess_marks_error_when_source_missing(client):
+    m = store.create_meeting(title="Nothing to process", status="processing")
+    resp = client.post(f"/meeting/{m.name}/reprocess", follow_redirects=False)
+    assert resp.status_code == 303
+    reloaded = store.get_meeting(m.name)
+    assert reloaded.status == "error" and "re-upload" in reloaded.error.lower()
+
+
 def test_meeting_not_found(client):
     assert client.get("/meeting/nope").status_code == 404
 

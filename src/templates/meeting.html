@@ -14,23 +14,47 @@
         </div>
         <div class="muted" style="margin-top:6px">id: <code>{{ meeting.name }}</code></div>
       </div>
-      <form action="/meeting/{{ meeting.name }}/delete" method="post"
-            onsubmit="return confirm('Delete this meeting permanently?');">
-        <button type="submit" class="secondary">Delete</button>
-      </form>
+      <div class="row" style="flex:none">
+        {% if meeting.status != "processing" %}
+        <form action="/meeting/{{ meeting.name }}/reprocess" method="post">
+          <button type="submit" class="secondary">Reprocess</button>
+        </form>
+        {% endif %}
+        <form action="/meeting/{{ meeting.name }}/delete" method="post"
+              onsubmit="return confirm('Delete this meeting permanently?');">
+          <button type="submit" class="secondary">Delete</button>
+        </form>
+      </div>
     </div>
   </div>
 
   {% if meeting.status == "processing" %}
     <div class="card" style="border-color:#3b4252">
-      <h2>⏳ Processing…</h2>
-      <p class="muted">Transcribing and summarising this recording. This can take a
-      while for long meetings — the page refreshes automatically every few seconds.</p>
+      <div class="banner">
+        <div class="spinner"></div>
+        <div>
+          <h2>Processing this recording…</h2>
+          <p class="muted" style="margin:0">Long meetings can take several minutes. This page
+          refreshes automatically — you can also leave and come back; it keeps working in the background.</p>
+          <ul class="steps">
+            {% if meeting.has_transcript %}
+              <li class="done">✓ 1. Transcribing the audio</li>
+              <li class="active">⏳ 2. Writing the summary…</li>
+            {% else %}
+              <li class="active">⏳ 1. Transcribing the audio… <span class="muted">(the slow part)</span></li>
+              <li>2. Writing the summary</li>
+            {% endif %}
+          </ul>
+        </div>
+      </div>
     </div>
   {% elif meeting.status == "error" %}
     <div class="card" style="border-color:#5b2a2a">
       <h2>⚠️ Processing failed</h2>
       <p class="muted">{{ meeting.error or "Unknown error." }}</p>
+      <form action="/meeting/{{ meeting.name }}/reprocess" method="post">
+        <button type="submit">Reprocess</button>
+      </form>
     </div>
   {% endif %}
 

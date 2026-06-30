@@ -121,8 +121,10 @@ async def _start_recording(message: discord.Message) -> None:
     try:
         sink = WaveSink()
         vc.start_recording(sink, _on_recording_finished, message.guild.id)
-    except Exception:  # noqa: BLE001
-        traceback.print_exc()
+    except Exception as exc:  # noqa: BLE001
+        # Expected while Discord DAVE receive is unsupported (py-cord #3139).
+        # Log one concise line instead of a scary full traceback.
+        print(f"Voice recording unavailable (DAVE / py-cord #3139): {type(exc).__name__}: {exc}")
         try:
             await vc.disconnect()
         except Exception:  # noqa: BLE001

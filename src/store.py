@@ -231,7 +231,8 @@ def save_summary(meeting: Meeting, text: str) -> Path:
 def import_audio(meeting: Meeting, src: Path) -> Path:
     """Copy an audio file into the meeting folder as the canonical recording."""
     dest = ensure_parent(meeting.audio_path)
-    shutil.copyfile(src, dest)
+    if Path(src).resolve() != dest.resolve():  # no-op when re-processing from audio.mp3
+        shutil.copyfile(src, dest)
     return dest
 
 

@@ -11,6 +11,8 @@ from __future__ import annotations
 import base64
 import os
 import secrets
+import threading
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
 
@@ -22,7 +24,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 import ai
 import store
-from process import process_meeting
+from process import process_meeting, summarize_meeting
 from settings import ExtractionSettings, Section, load_settings, save_settings
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
@@ -30,7 +32,18 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 # Render Markdown summaries/answers to HTML in templates via `{{ text | md }}`.
 templates.env.filters["md"] = lambda text: _markdown.markdown(text or "", extensions=["nl2br"])
 
-app = FastAPI(title="Meeting Scribe")
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    # Re-enqueue any meeting left "processing" by a restart (redeploy/crash),
+    # so background work self-heals instead of getting stuck forever.
+    for meeting in store.list_meetings():
+        if meeting.status == "processing":
+            threading.Thread(target=_run_pipeline, args=(meeting.name,), daemon=True).start()
+    yield
+
+
+app = FastAPI(title="Meeting Scribe", lifespan=_lifespan)
 
 # Paths reachable without logging in (Coolify's health check hits /healthz).
 _PUBLIC_PATHS = {"/healthz"}
@@ -120,22 +133,42 @@ def meeting_ask(request: Request, name: str, question: Annotated[str, Form()]) -
     )
 
 
-def _process_upload(meeting_name: str, media: Path) -> None:
-    """Background job: transcribe + summarise, updating the meeting's status.
+def _locate_media(meeting: store.Meeting) -> Path | None:
+    """Best source to (re)process from: the extracted audio, else the raw upload."""
+    if meeting.audio_path.exists():
+        return meeting.audio_path
+    for src in sorted(meeting.dir.glob("source.*")):
+        return src
+    return None
 
-    Long recordings can take minutes, so this runs after the upload response is
-    sent (Starlette runs sync background tasks in a threadpool).
+
+def _run_pipeline(meeting_name: str) -> None:
+    """Background job: transcribe (if needed) + summarise, updating the status.
+
+    Resumable: if a transcript already exists we only (re)summarise; otherwise we
+    process from the stored audio/upload. Long recordings can take minutes, so
+    this runs off the request path (threadpool task or recovery thread).
     """
     meeting = store.get_meeting(meeting_name)
     if meeting is None:
         return
     try:
-        process_meeting(meeting, media)
+        if meeting.transcript_text().strip():
+            summarize_meeting(meeting)  # transcript already done — only the summary remains
+        else:
+            media = _locate_media(meeting)
+            if media is None:
+                meeting.update(status="error", error="Source file is missing — please re-upload.")
+                return
+            process_meeting(meeting, media)
         meeting.update(status="done", error="")
     except Exception as exc:  # noqa: BLE001 — record the failure for the UI
         meeting.update(status="error", error=str(exc))
     finally:
-        media.unlink(missing_ok=True)
+        # Once we have the audio + transcript, drop the raw upload to save space.
+        if meeting.audio_path.exists() and meeting.transcript_text().strip():
+            for src in meeting.dir.glob("source.*"):
+                src.unlink(missing_ok=True)
 
 
 @app.post("/upload")
@@ -160,7 +193,18 @@ async def upload(
         while chunk := await file.read(1024 * 1024):
             out.write(chunk)
 
-    background_tasks.add_task(_process_upload, meeting.name, media)
+    background_tasks.add_task(_run_pipeline, meeting.name)
+    return RedirectResponse(url=f"/meeting/{meeting.name}", status_code=303)
+
+
+@app.post("/meeting/{name}/reprocess")
+def meeting_reprocess(name: str, background_tasks: BackgroundTasks) -> RedirectResponse:
+    """Re-run transcription/summary for a stuck or failed meeting."""
+    meeting = store.get_meeting(name)
+    if meeting is None:
+        return RedirectResponse(url="/", status_code=303)
+    meeting.update(status="processing", error="")
+    background_tasks.add_task(_run_pipeline, meeting.name)
     return RedirectResponse(url=f"/meeting/{meeting.name}", status_code=303)
 
 
