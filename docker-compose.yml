@@ -1,0 +1,28 @@
+# Local run / Coolify deploy. Coolify can also build the Dockerfile directly.
+services:
+  meeting-scribe:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+      AUTH_USERNAME: ${AUTH_USERNAME:-}
+      AUTH_PASSWORD: ${AUTH_PASSWORD:-}
+      PORT: 8000
+    volumes:
+      - scribe-data:/app/data        # settings.json
+      - scribe-results:/app/results  # recordings, transcripts, summaries
+      - scribe-cache:/app/.cache     # whisper model cache
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthz').status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  scribe-data:
+  scribe-results:
+  scribe-cache:

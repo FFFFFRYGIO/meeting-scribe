@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Settings · Meeting Scribe{% endblock %}
+{% block content %}
+  <div class="card">
+    <h2>Extraction settings</h2>
+    <p class="muted">Tune what the AI pulls out of every meeting. The summary is built from the sections below — edit, add, or remove them to change what gets extracted.</p>
+    {% if saved %}<p style="color:#7ee787">Saved.</p>{% endif %}
+
+    <form action="/settings" method="post">
+      <div class="row">
+        <div class="grow">
+          <label for="claude_model">Claude model</label>
+          <input type="text" id="claude_model" name="claude_model" value="{{ settings.claude_model }}">
+        </div>
+        <div class="grow">
+          <label for="whisper_model">Whisper model</label>
+          <input type="text" id="whisper_model" name="whisper_model" value="{{ settings.whisper_model }}">
+        </div>
+        <div class="grow">
+          <label for="language">Language (blank = auto)</label>
+          <input type="text" id="language" name="language" value="{{ settings.language or '' }}" placeholder="pl, en, ...">
+        </div>
+      </div>
+
+      <label for="summary_system">Summary system prompt (the assistant's role)</label>
+      <textarea id="summary_system" name="summary_system">{{ settings.summary_system }}</textarea>
+
+      <label for="summary_instructions">Summary instructions</label>
+      <textarea id="summary_instructions" name="summary_instructions">{{ settings.summary_instructions }}</textarea>
+
+      <label for="qa_system">Q&amp;A system prompt</label>
+      <textarea id="qa_system" name="qa_system">{{ settings.qa_system }}</textarea>
+
+      <h2 style="margin-top:22px">Summary sections</h2>
+      <p class="muted">Each section becomes a heading in the summary. Clear a title to delete that section.</p>
+      <div id="sections">
+        {% for s in settings.sections %}
+          <div class="card">
+            <label>Section title</label>
+            <input type="text" name="section_title" value="{{ s.title }}">
+            <label>What to extract</label>
+            <textarea name="section_instructions">{{ s.instructions }}</textarea>
+          </div>
+        {% endfor %}
+        <div class="card">
+          <label>New section title</label>
+          <input type="text" name="section_title" value="">
+          <label>What to extract</label>
+          <textarea name="section_instructions"></textarea>
+        </div>
+      </div>
+
+      <p style="margin-top:14px"><button type="submit">Save settings</button></p>
+    </form>
+  </div>
+{% endblock %}
