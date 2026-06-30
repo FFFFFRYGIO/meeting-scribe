@@ -44,3 +44,8 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+# Type checkers (pyright / basedpyright) don't read pytest's pythonpath, so tell
+# them where the flat modules under src/ live to resolve `import config`, etc.
+[tool.pyright]
+extraPaths = ["src", "."]
