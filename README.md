@@ -1,140 +1,147 @@
 # Meeting Scribe
 
-Turn meeting recordings into searchable text. Meeting Scribe takes a video
-recording, extracts its audio track, and transcribes it to plain text — all
-**locally**, with no API key or internet connection required (the speech model
-is downloaded once on first use).
+Turn meetings into searchable, summarised, queryable notes. A Discord bot joins
+your voice channel, records the call, and once it's over **transcribes it,
+posts an AI summary back to the channel**, and lets anyone ask questions about
+it — in Discord or from a small web UI.
 
 ```
-video (MP4)  ──►  audio (MP3)  ──►  transcript (TXT)
-   extract_audio        transcribe
+Discord voice ──► record ──► mix ──► transcribe ──► summary  ──► posted to channel + web UI
+   (bot joins)    (py-cord)  (pydub)  (faster-whisper)  (Claude)        ▲
+                                                                        └── ask questions anytime
 ```
+
+Design principle: **as little AI as possible**. Recording, mixing,
+transcription, storage, and meeting lookup are all deterministic and local.
+Claude is used only for two things — writing the **summary** and answering
+**questions** — and exactly *what* it extracts is configurable from the UI
+without touching code.
+
+## Features
+
+- 🎙️ **Discord recording** — mention the bot to make it join your voice channel
+  and record; mention `stop` to finish.
+- 📝 **Automatic summaries** — after a meeting, the bot posts a structured
+  summary to the channel and saves it.
+- ❓ **Q&A** — ask about any meeting from Discord (`@bot question <date> ...`) or
+  the web UI; answers are grounded strictly in the transcript.
+- 🎛️ **Tunable extraction** — edit the summary sections, instructions, model, and
+  language from the **Settings** page. Add a "Risks" section, change the tone,
+  switch language — the next summary follows.
+- ⬆️ **Upload** — drop a video/audio file into the web UI to transcribe +
+  summarise it without Discord.
+- 🌐 **Web UI** — browse meetings, read transcripts and summaries, ask questions.
+- 🔒 **Local transcription** — speech-to-text runs locally via `faster-whisper`
+  (no API key, model downloaded once). Only summary/Q&A call out to Claude.
+
+## Architecture
+
+| Piece | File | Role |
+|---|---|---|
+| Web UI | `src/web.py` + `src/templates/` | FastAPI app: meetings list, detail, ask, upload, settings |
+| Discord bot | `src/bot.py` | py-cord voice recording + mention commands |
+| Service runner | `app.py` | Runs the web server and (if configured) the bot in one process |
+| Meeting store | `src/store.py` | Filesystem store — one folder per meeting under `results/` |
+| AI | `src/ai.py` | Claude summary + Q&A (the only LLM calls) |
+| Settings | `src/settings.py` | Editable extraction config, persisted to `data/settings.json` |
+| Pipeline | `src/process.py` | transcribe → summarise, shared by upload and the bot |
+| Steps | `src/extract_audio.py`, `src/transcribe.py` | the original MP4→MP3 and MP3→TXT building blocks |
+
+Each meeting lives in `results/<name>/` with `metadata.json`, `audio.mp3`,
+`transcript.txt`, and `summary.md`.
 
 ## Requirements
 
-- **[uv](https://docs.astral.sh/uv/)** — Python package & environment manager
-- **Python 3.10+** (pinned to the version in [.python-version](.python-version))
-- **[FFmpeg](https://ffmpeg.org/)** on your `PATH` — required by both audio
-  extraction and transcription
-
-Python dependencies (installed automatically by `uv sync`):
-
-- [`moviepy`](https://pypi.org/project/moviepy/) — extract audio from video
-- [`faster-whisper`](https://pypi.org/project/faster-whisper/) — local speech-to-text
-
-## Project layout
-
-```
-meeting scribe/
-├── pyproject.toml          # project + dependencies (uv)
-├── uv.lock                 # locked dependency versions
-├── .python-version         # pinned Python version
-├── main.py                 # full pipeline entry point
-├── README.md
-├── data/                   # input recordings (contents git-ignored)
-│   └── <name>/video.mp4
-├── results/                # generated transcripts (contents git-ignored)
-│   └── <name>/audio.txt
-└── src/
-    ├── config.py            # shared paths & defaults
-    ├── extract_audio.py     # MP4 -> MP3
-    ├── transcribe.py        # MP3 -> TXT
-    └── notify.py            # wait-for-file + beep helper
-```
-
-Recordings and transcripts live under `data/` and `results/`. Those folders are
-kept in git via `.gitkeep`, but their contents are ignored so large media files
-never get committed.
+- **[uv](https://docs.astral.sh/uv/)** and **Python 3.13+**
+- **[FFmpeg](https://ffmpeg.org/)** on `PATH` (audio extraction, transcription, mixing)
+- **`ANTHROPIC_API_KEY`** — for summaries and Q&A ([get one](https://console.anthropic.com/))
+- **`DISCORD_BOT_TOKEN`** — only if you want the Discord bot ([setup guide](docs/DISCORD_SETUP.md))
 
 ## Setup
 
 ```bash
-# Install FFmpeg first (see https://ffmpeg.org/download.html)
-
-# Create the virtual environment and install dependencies (incl. dev tools)
 uv sync
-
-# (optional) Install the git pre-commit hooks
-uv run pre-commit install
+cp .env.example .env   # then fill in ANTHROPIC_API_KEY (+ DISCORD_BOT_TOKEN)
 ```
 
-## Usage
+## Running
 
-### Run the full pipeline
-
-Just hand `main.py` a file — **you don't say whether it's video or audio**. The
-script detects the type from the extension and runs the right steps:
-
-- a **video** (`.mp4`, `.mov`, `.mkv`, `.webm`, …) → extract audio → transcribe
-- an **audio** file (`.mp3`, `.wav`, `.m4a`, `.flac`, …) → transcribe directly
+Run the whole service (web UI + Discord bot if the token is set):
 
 ```bash
-# Video: audio is extracted automatically, then transcribed
-uv run python main.py data/meeting/video.mp4
+set -a; source .env; set +a   # load env vars
+uv run python app.py          # http://localhost:8000
+```
 
-# Audio: transcribed directly, no extraction step
+Web UI only, with auto-reload during development:
+
+```bash
+uv run uvicorn web:app --reload
+```
+
+The Discord bot starts automatically when `DISCORD_BOT_TOKEN` is present; without
+it, only the web UI runs.
+
+### Discord commands
+
+| You type (mention the bot) | What happens |
+|---|---|
+| `@Scribe` | Joins your current voice channel and records |
+| `@Scribe stop` | Stops → transcribes → summarises → posts the summary |
+| `@Scribe question what were the action items?` | Answers from the most recent meeting |
+| `@Scribe question 2026-06-30 who owns the docs?` | Answers from the meeting on that date |
+
+See [docs/DISCORD_SETUP.md](docs/DISCORD_SETUP.md) to create the bot and invite it.
+
+### Tuning what gets extracted
+
+Open **Settings** in the web UI. The summary is built from a list of **sections**
+(heading + instructions). Edit them, reorder, add new ones (e.g. "Risks",
+"Sentiment"), or change the model/language. Clear a section's title to delete it.
+Changes apply to the next summary and are saved to `data/settings.json`.
+
+## Deployment (Coolify)
+
+The repo ships a `Dockerfile` (FFmpeg + voice libs included) and a
+`docker-compose.yml`.
+
+1. In Coolify, create a service from this Git repo (Dockerfile or Compose build).
+2. Set environment variables: `ANTHROPIC_API_KEY`, optional `DISCORD_BOT_TOKEN`,
+   `PORT=8000`.
+3. Add **persistent volumes** for `/app/data` (settings) and `/app/results`
+   (recordings/transcripts/summaries) so data survives redeploys. The compose
+   file already declares them.
+4. Expose port **8000**. Health check: `GET /healthz`.
+
+Build and run locally with Docker:
+
+```bash
+docker compose up --build
+```
+
+> ⚠️ Treat tokens as secrets — set them in Coolify's env/secrets, never commit
+> them. If a token has been shared in plaintext, rotate it.
+
+## The original CLI (still here)
+
+The standalone file pipeline remains available for one-off conversions:
+
+```bash
+uv run python main.py data/meeting/video.mp4          # video → audio → transcript
 uv run python main.py data/meeting/audio.mp3 --language pl
+uv run extract-audio in.mp4 out.mp3                    # single step
+uv run transcribe out.mp3 out.txt --model small        # single step
 ```
-
-By default the outputs go to a **timestamped** folder under `results/`, e.g.
-`results/meeting-2026-06-30_14-30-05/<filename>.txt`, so runs never overwrite
-each other. Override the folder name or any path:
-
-```bash
-# Use a fixed folder name instead of a timestamp
-uv run python main.py recording.mp4 --name standup
-
-# Pick the transcript location and a larger model
-uv run python main.py recording.mp4 --transcript results/notes.txt --model medium
-```
-
-An unknown extension (or a missing file) is reported with a clear error before
-any work starts.
-
-### Run a single step
-
-Each function is also a standalone command (defined in `pyproject.toml`):
-
-```bash
-# 1. Extract audio from video (MP4 -> MP3)
-uv run extract-audio data/meeting/video.mp4 data/meeting/audio.mp3
-
-# 2. Transcribe audio to text (MP3 -> TXT)
-uv run transcribe data/meeting/audio.mp3 results/meeting/audio.txt --language pl --model small
-
-# Optional: beep when a long job finishes (waits for the file to appear)
-uv run wait-for-file results/meeting/audio.txt
-```
-
-You can also invoke the modules directly:
-
-```bash
-uv run python -m extract_audio data/meeting/video.mp4 data/meeting/audio.mp3
-uv run python -m transcribe data/meeting/audio.mp3 results/meeting/audio.txt
-```
-
-## Model sizes
-
-`faster-whisper` supports several model sizes — larger is more accurate but
-slower and heavier: `tiny`, `base`, `small` (default), `medium`, `large-v3`.
-Choose with `--model`. The model is downloaded and cached on first use.
 
 ## Development
 
-Dev tooling (pytest, ruff, pre-commit) is installed by `uv sync`.
-
 ```bash
-# Run the unit tests (no media files or FFmpeg required — heavy steps are mocked)
-uv run pytest
-
-# Lint and format
-uv run ruff check .
-uv run ruff format .
-
-# Run all pre-commit hooks against the whole tree
+uv run pytest                 # tests (AI, Discord, and FFmpeg are mocked)
+uv run pytest tests/test_web.py::test_upload_processes_and_redirects   # one test
+uv run ruff check . && uv run ruff format .
 uv run pre-commit run --all-files
 ```
 
-The test suite lives in [`tests/`](tests/) and covers the run-name generation,
-audio extraction, transcription, the notify helper, and the `main.py` path
-wiring.
+Tests cover settings, the meeting store, the AI prompt assembly (Claude mocked),
+the web routes, and the original CLI wiring — all without media files, FFmpeg, a
+Discord token, or an API key.

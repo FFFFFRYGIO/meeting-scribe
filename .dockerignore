@@ -1,0 +1,18 @@
+# Build context excludes — keep the image small and reproducible.
+.venv/
+__pycache__/
+*.pyc
+.git/
+.github/
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+tests/
+# Runtime data — provided by mounted volumes, never baked into the image.
+data/*
+!data/.gitkeep
+results/*
+!results/.gitkeep
+*.bin
+.cache/
+.DS_Store

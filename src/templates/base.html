@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Meeting Scribe{% endblock %}</title>
+  <style>
+    :root { --bg:#0f1115; --card:#181b22; --line:#2a2f3a; --fg:#e6e8ec; --muted:#9aa3b2; --accent:#6ea8fe; }
+    * { box-sizing: border-box; }
+    body { margin:0; font:16px/1.55 system-ui, sans-serif; background:var(--bg); color:var(--fg); }
+    a { color:var(--accent); text-decoration:none; }
+    a:hover { text-decoration:underline; }
+    header { border-bottom:1px solid var(--line); padding:14px 24px; display:flex; gap:20px; align-items:center; }
+    header h1 { font-size:18px; margin:0; }
+    header nav { margin-left:auto; display:flex; gap:18px; }
+    main { max-width:960px; margin:0 auto; padding:24px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:18px 20px; margin-bottom:18px; }
+    .muted { color:var(--muted); font-size:14px; }
+    .pill { display:inline-block; font-size:12px; padding:2px 8px; border:1px solid var(--line); border-radius:999px; color:var(--muted); margin-right:6px; }
+    h2 { font-size:16px; margin:0 0 10px; }
+    input[type=text], textarea, select { width:100%; background:#0f1218; color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:9px 11px; font:inherit; }
+    textarea { min-height:70px; resize:vertical; }
+    button { background:var(--accent); color:#06101f; border:0; border-radius:8px; padding:9px 16px; font:inherit; font-weight:600; cursor:pointer; }
+    button.secondary { background:#222733; color:var(--fg); border:1px solid var(--line); }
+    label { display:block; font-size:13px; color:var(--muted); margin:12px 0 4px; }
+    pre { white-space:pre-wrap; word-wrap:break-word; background:#0f1218; border:1px solid var(--line); border-radius:8px; padding:14px; font:13px/1.5 ui-monospace, monospace; }
+    .summary :first-child { margin-top:0; }
+    .row { display:flex; gap:12px; flex-wrap:wrap; }
+    .grow { flex:1; }
+    .list-item { display:flex; align-items:baseline; gap:10px; padding:12px 0; border-bottom:1px solid var(--line); }
+    .list-item:last-child { border-bottom:0; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1><a href="/">📝 Meeting Scribe</a></h1>
+    <nav>
+      <a href="/">Meetings</a>
+      <a href="/settings">Settings</a>
+    </nav>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

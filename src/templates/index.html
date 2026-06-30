@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>Upload a recording</h2>
+    <p class="muted">Drop in a video or audio file — it will be transcribed and summarised, then saved as a meeting.</p>
+    <form action="/upload" method="post" enctype="multipart/form-data">
+      <div class="row">
+        <div class="grow">
+          <label for="title">Title (optional)</label>
+          <input type="text" id="title" name="title" placeholder="e.g. Weekly standup">
+        </div>
+      </div>
+      <label for="file">File</label>
+      <input type="file" id="file" name="file" required>
+      <p style="margin-top:14px"><button type="submit">Upload &amp; process</button></p>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Meetings</h2>
+    {% if not meetings %}
+      <p class="muted">No meetings yet. Upload one above, or have the Discord bot record a call.</p>
+    {% else %}
+      {% for m in meetings %}
+        <div class="list-item">
+          <div class="grow">
+            <a href="/meeting/{{ m.name }}"><strong>{{ m.title or m.name }}</strong></a>
+            <div class="muted">{{ m.created_at }}
+              {% if m.channel %} · #{{ m.channel }}{% endif %}
+              {% if m.participants %} · {{ m.participants | join(", ") }}{% endif %}
+            </div>
+          </div>
+          <div>
+            <span class="pill">{{ m.source }}</span>
+            {% if m.has_summary %}<span class="pill">summary</span>{% endif %}
+            {% if m.has_transcript %}<span class="pill">transcript</span>{% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    {% endif %}
+  </div>
+{% endblock %}

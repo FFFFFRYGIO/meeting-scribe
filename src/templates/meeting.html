@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}{{ meeting.title or meeting.name }} · Meeting Scribe{% endblock %}
+{% block content %}
+  <p><a href="/">&larr; All meetings</a></p>
+  <div class="card">
+    <h2>{{ meeting.title or meeting.name }}</h2>
+    <div class="muted">{{ meeting.created_at }}
+      {% if meeting.channel %} · #{{ meeting.channel }}{% endif %}
+      {% if meeting.participants %} · {{ meeting.participants | join(", ") }}{% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Ask about this meeting</h2>
+    <form action="/meeting/{{ meeting.name }}/ask" method="post">
+      <div class="row">
+        <div class="grow"><input type="text" name="question" placeholder="What were the action items?" value="{{ question }}" required></div>
+        <div><button type="submit">Ask</button></div>
+      </div>
+    </form>
+    {% if answer %}
+      <div style="margin-top:14px">
+        <div class="muted">Q: {{ question }}</div>
+        <div class="summary">{{ answer | md | safe }}</div>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Summary</h2>
+    {% if summary %}
+      <div class="summary">{{ summary | md | safe }}</div>
+    {% else %}
+      <p class="muted">No summary yet.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Transcript</h2>
+    {% if transcript %}
+      <pre>{{ transcript }}</pre>
+    {% else %}
+      <p class="muted">No transcript yet.</p>
+    {% endif %}
+  </div>
+{% endblock %}
