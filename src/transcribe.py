@@ -31,7 +31,7 @@ def transcribe(
     model_size: str = DEFAULT_MODEL,
     language: str | None = DEFAULT_LANGUAGE,
     device: str = "auto",
-    compute_type: str = "default",
+    compute_type: str = "int8",
 ) -> Path:
     """Transcribe *audio_path* and write the text to *output_path*.
 
@@ -84,8 +84,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--compute-type",
-        default="default",
-        help="Precision, e.g. int8, float16, float32 (default: default)",
+        default="int8",
+        help="Precision, e.g. int8, float16, float32 (default: int8 — light/fast on CPU)",
     )
     args = parser.parse_args()
 

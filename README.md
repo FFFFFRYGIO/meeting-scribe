@@ -34,7 +34,9 @@ without touching code.
 - 🌐 **Web UI** — browse meetings, read transcripts and summaries, ask questions,
   and **delete** meetings you no longer need.
 - 🔒 **Local transcription** — speech-to-text runs locally via `faster-whisper`
-  (no API key, model downloaded once). Only summary/Q&A call out to Claude.
+  (no API key, model downloaded once). Defaults to the most accurate **`large-v3`**
+  model with **int8** compute (light/fast on CPU); change the size or set a fixed
+  language in **Settings**. Only summary/Q&A call out to Claude.
 
 ## Architecture
 

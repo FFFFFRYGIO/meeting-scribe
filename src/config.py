@@ -18,7 +18,9 @@ DATA_DIR: Path = PROJECT_ROOT / "data"
 RESULTS_DIR: Path = PROJECT_ROOT / "results"
 
 # Defaults for the transcription step.
-DEFAULT_MODEL: str = "small"  # faster-whisper model size
+# large-v3 is the most accurate faster-whisper size (see README "Model sizes");
+# run with int8 compute so it stays light/fast on CPU.
+DEFAULT_MODEL: str = "large-v3"  # faster-whisper model size
 DEFAULT_LANGUAGE: str | None = None  # None = auto-detect
 
 # Prefix used when generating a default run name.
