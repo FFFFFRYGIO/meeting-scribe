@@ -36,6 +36,16 @@ from transcribe import transcribe
 # guild_id -> active recording context
 _active: dict[int, dict] = {}
 
+# Shown when live recording can't start (Discord DAVE E2EE — see _start_recording).
+_RECORDING_UNAVAILABLE = (
+    "⚠️ Live voice recording is temporarily unavailable: Discord now enforces "
+    "end-to-end encryption (DAVE) on voice, and audio reception isn't supported "
+    "by the bot library yet (py-cord issue #3139).\n"
+    "Meanwhile you can still: record the call with another tool and upload it in "
+    "the web UI, and ask me about saved meetings with "
+    "`@me question <date> <question>`."
+)
+
 
 def _intents() -> discord.Intents:
     intents = discord.Intents.default()
@@ -99,6 +109,23 @@ async def _start_recording(message: discord.Message) -> None:
 
     channel = voice_state.channel
     vc = await channel.connect()
+
+    # Discord enforced DAVE end-to-end encryption on voice (March 2026); voice
+    # *reception* is not yet supported by py-cord (issue #3139). start_recording
+    # currently raises, so fail gracefully instead of crashing — this path will
+    # start working unchanged once upstream ships DAVE receive support.
+    try:
+        sink = WaveSink()
+        vc.start_recording(sink, _on_recording_finished, message.guild.id)
+    except Exception:  # noqa: BLE001
+        traceback.print_exc()
+        try:
+            await vc.disconnect()
+        except Exception:  # noqa: BLE001
+            pass
+        await message.channel.send(_RECORDING_UNAVAILABLE)
+        return
+
     meeting = store.create_meeting(
         source="discord",
         channel=channel.name,
@@ -110,7 +137,6 @@ async def _start_recording(message: discord.Message) -> None:
         "text_channel": message.channel,
         "guild": message.guild,
     }
-    vc.start_recording(WaveSink(), _on_recording_finished, message.guild.id)
     await message.channel.send(
         f"🔴 Recording in **{channel.name}**. Mention me with `stop` when you're done."
     )

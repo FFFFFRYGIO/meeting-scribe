@@ -21,6 +21,9 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(store, "RESULTS_DIR", tmp_path / "results")
     (tmp_path / "results").mkdir()
     monkeypatch.setattr(settings_mod, "SETTINGS_FILE", tmp_path / "settings.json")
+    # Auth is disabled unless a test opts in (keeps these tests hermetic).
+    monkeypatch.delenv("AUTH_USERNAME", raising=False)
+    monkeypatch.delenv("AUTH_PASSWORD", raising=False)
     return TestClient(web.app)
 
 
