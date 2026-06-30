@@ -84,3 +84,25 @@ def test_upload_processes_and_redirects(client, monkeypatch):
 
 def test_meeting_not_found(client):
     assert client.get("/meeting/nope").status_code == 404
+
+
+def test_basic_auth_gates_ui_when_configured(client, monkeypatch):
+    import base64
+
+    monkeypatch.setenv("AUTH_USERNAME", "Orka")
+    monkeypatch.setenv("AUTH_PASSWORD", "Walen")
+
+    # No credentials → challenged.
+    r = client.get("/")
+    assert r.status_code == 401 and "Basic" in r.headers.get("www-authenticate", "")
+
+    # Wrong password → still blocked.
+    bad = base64.b64encode(b"Orka:nope").decode()
+    assert client.get("/", headers={"Authorization": f"Basic {bad}"}).status_code == 401
+
+    # Correct credentials → allowed through.
+    ok = base64.b64encode(b"Orka:Walen").decode()
+    assert client.get("/", headers={"Authorization": f"Basic {ok}"}).status_code == 200
+
+    # Health check stays public for Coolify.
+    assert client.get("/healthz").status_code == 200

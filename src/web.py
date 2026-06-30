@@ -8,14 +8,18 @@ tune what gets extracted — all without touching Discord. It runs on port 8000
 
 from __future__ import annotations
 
+import base64
+import os
+import secrets
 import tempfile
 from pathlib import Path
 from typing import Annotated
 
 import markdown as _markdown
 from fastapi import FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.base import BaseHTTPMiddleware
 
 import ai
 import store
@@ -28,6 +32,44 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 templates.env.filters["md"] = lambda text: _markdown.markdown(text or "", extensions=["nl2br"])
 
 app = FastAPI(title="Meeting Scribe")
+
+# Paths reachable without logging in (Coolify's health check hits /healthz).
+_PUBLIC_PATHS = {"/healthz"}
+
+
+class BasicAuthMiddleware(BaseHTTPMiddleware):
+    """Gate the whole UI behind a single HTTP Basic account.
+
+    Credentials come from AUTH_USERNAME / AUTH_PASSWORD so the password never
+    lives in the repo. If AUTH_PASSWORD is unset, auth is disabled (local dev).
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        user = os.environ.get("AUTH_USERNAME", "")
+        password = os.environ.get("AUTH_PASSWORD", "")
+        if not password or request.url.path in _PUBLIC_PATHS:
+            return await call_next(request)
+
+        header = request.headers.get("Authorization", "")
+        if header.startswith("Basic "):
+            try:
+                supplied_user, _, supplied_pw = base64.b64decode(header[6:]).decode().partition(":")
+            except Exception:  # noqa: BLE001 — malformed header → treat as unauthorized
+                supplied_user = supplied_pw = ""
+            # compare_digest on both halves to avoid early-exit timing leaks
+            if secrets.compare_digest(supplied_user, user) and secrets.compare_digest(
+                supplied_pw, password
+            ):
+                return await call_next(request)
+
+        return Response(
+            "Unauthorized",
+            status_code=401,
+            headers={"WWW-Authenticate": 'Basic realm="Meeting Scribe"'},
+        )
+
+
+app.add_middleware(BasicAuthMiddleware)
 
 
 @app.get("/healthz")
