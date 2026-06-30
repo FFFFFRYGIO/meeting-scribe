@@ -11,12 +11,11 @@ from __future__ import annotations
 import base64
 import os
 import secrets
-import tempfile
 from pathlib import Path
 from typing import Annotated
 
 import markdown as _markdown
-from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -121,23 +120,47 @@ def meeting_ask(request: Request, name: str, question: Annotated[str, Form()]) -
     )
 
 
+def _process_upload(meeting_name: str, media: Path) -> None:
+    """Background job: transcribe + summarise, updating the meeting's status.
+
+    Long recordings can take minutes, so this runs after the upload response is
+    sent (Starlette runs sync background tasks in a threadpool).
+    """
+    meeting = store.get_meeting(meeting_name)
+    if meeting is None:
+        return
+    try:
+        process_meeting(meeting, media)
+        meeting.update(status="done", error="")
+    except Exception as exc:  # noqa: BLE001 — record the failure for the UI
+        meeting.update(status="error", error=str(exc))
+    finally:
+        media.unlink(missing_ok=True)
+
+
 @app.post("/upload")
 async def upload(
+    background_tasks: BackgroundTasks,
     file: Annotated[UploadFile, File()],
     title: Annotated[str, Form()] = "",
 ) -> RedirectResponse:
-    """Accept a recording, process it (transcribe + summarise), store as a meeting."""
+    """Accept a recording and return immediately; process it in the background.
+
+    The file is streamed to the meeting folder, the meeting is marked
+    ``processing``, and transcription/summarisation run after the response so the
+    page never blocks on long recordings.
+    """
     suffix = Path(file.filename or "upload").suffix or ".mp3"
-    meeting = store.create_meeting(title=title or (file.filename or "Upload"), source="upload")
+    meeting = store.create_meeting(
+        title=title or (file.filename or "Upload"), source="upload", status="processing"
+    )
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        tmp.write(await file.read())
-        tmp_path = Path(tmp.name)
-    try:
-        process_meeting(meeting, tmp_path)
-    finally:
-        tmp_path.unlink(missing_ok=True)
+    media = meeting.dir / f"source{suffix}"
+    with media.open("wb") as out:
+        while chunk := await file.read(1024 * 1024):
+            out.write(chunk)
 
+    background_tasks.add_task(_process_upload, meeting.name, media)
     return RedirectResponse(url=f"/meeting/{meeting.name}", status_code=303)
 
 

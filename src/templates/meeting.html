@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ meeting.title or meeting.name }} · Meeting Scribe{% endblock %}
+{# While processing, auto-refresh the page so the summary appears when ready. #}
+{% block head %}{% if meeting.status == "processing" %}<meta http-equiv="refresh" content="5">{% endif %}{% endblock %}
 {% block content %}
   <p><a href="/">&larr; All meetings</a></p>
   <div class="card">
@@ -9,6 +11,19 @@
       {% if meeting.participants %} · {{ meeting.participants | join(", ") }}{% endif %}
     </div>
   </div>
+
+  {% if meeting.status == "processing" %}
+    <div class="card" style="border-color:#3b4252">
+      <h2>⏳ Processing…</h2>
+      <p class="muted">Transcribing and summarising this recording. This can take a
+      while for long meetings — the page refreshes automatically every few seconds.</p>
+    </div>
+  {% elif meeting.status == "error" %}
+    <div class="card" style="border-color:#5b2a2a">
+      <h2>⚠️ Processing failed</h2>
+      <p class="muted">{{ meeting.error or "Unknown error." }}</p>
+    </div>
+  {% endif %}
 
   <div class="card">
     <h2>Ask about this meeting</h2>

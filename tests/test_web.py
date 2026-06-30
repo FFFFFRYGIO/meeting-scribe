@@ -7,6 +7,8 @@ right helpers.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from starlette.testclient import TestClient
 
@@ -66,8 +68,12 @@ def test_ask_uses_ai_answer(client, monkeypatch):
     assert "answer to: who?" in body
 
 
-def test_upload_processes_and_redirects(client, monkeypatch):
+def test_upload_redirects_and_processes_in_background(client, monkeypatch):
+    seen = {}
+
     def fake_process(meeting, media, *a, **k):
+        # media was streamed to disk before the background task ran
+        seen["media_exists"] = Path(media).exists()
         store.save_transcript(meeting, "transcribed")
         store.save_summary(meeting, "summarised")
         return meeting
@@ -80,9 +86,37 @@ def test_upload_processes_and_redirects(client, monkeypatch):
         files={"file": ("call.mp3", b"fake-bytes", "audio/mpeg")},
         follow_redirects=False,
     )
+    # Responds immediately with a redirect to the meeting page.
     assert resp.status_code == 303
     assert resp.headers["location"].startswith("/meeting/")
-    assert store.list_meetings()[0].title == "Uploaded call"
+
+    # TestClient runs the background task; the meeting ends up done.
+    m = store.list_meetings()[0]
+    assert m.title == "Uploaded call"
+    assert m.status == "done"
+    assert m.has_summary and m.has_transcript
+    assert seen["media_exists"] is True
+
+
+def test_upload_marks_error_on_failure(client, monkeypatch):
+    def boom(meeting, media, *a, **k):
+        raise RuntimeError("ffmpeg blew up")
+
+    monkeypatch.setattr(web, "process_meeting", boom)
+    resp = client.post(
+        "/upload",
+        files={"file": ("call.mp3", b"x", "audio/mpeg")},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    m = store.list_meetings()[0]
+    assert m.status == "error" and "ffmpeg blew up" in m.error
+
+
+def test_processing_meeting_page_auto_refreshes(client):
+    m = store.create_meeting(title="In progress", status="processing")
+    body = client.get(f"/meeting/{m.name}").text
+    assert 'http-equiv="refresh"' in body and "Processing" in body
 
 
 def test_meeting_not_found(client):

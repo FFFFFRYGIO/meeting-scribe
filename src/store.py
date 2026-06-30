@@ -51,6 +51,8 @@ class Meeting:
     channel: str = ""  # discord channel name, if any
     participants: list[str] = field(default_factory=list)
     duration_seconds: float | None = None
+    status: str = "done"  # "processing" | "done" | "error"
+    error: str = ""  # populated when status == "error"
 
     # ---- derived paths -------------------------------------------------
     @property
@@ -94,6 +96,8 @@ class Meeting:
             "channel": self.channel,
             "participants": self.participants,
             "duration_seconds": self.duration_seconds,
+            "status": self.status,
+            "error": self.error,
         }
 
     def save_metadata(self) -> None:
@@ -126,6 +130,8 @@ def _load(dir: Path) -> Meeting | None:
         channel=data.get("channel", ""),
         participants=data.get("participants", []) or [],
         duration_seconds=data.get("duration_seconds"),
+        status=data.get("status", "done"),  # default keeps old meetings valid
+        error=data.get("error", ""),
     )
 
 
@@ -169,6 +175,7 @@ def create_meeting(
     channel: str = "",
     participants: list[str] | None = None,
     name: str | None = None,
+    status: str = "done",
     now: datetime | None = None,
 ) -> Meeting:
     """Create a new meeting folder with metadata and return it.
@@ -191,6 +198,7 @@ def create_meeting(
         source=source,
         channel=channel,
         participants=participants or [],
+        status=status,
     )
     meeting.dir.mkdir(parents=True, exist_ok=True)
     meeting.save_metadata()
