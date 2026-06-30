@@ -1,0 +1,46 @@
+[project]
+name = "meeting-scribe"
+version = "0.1.0"
+description = "Turn meeting recordings into searchable text: extract audio from video, then transcribe it locally."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "moviepy>=2.0.0",
+    "faster-whisper>=1.0.0",
+]
+
+[project.scripts]
+meeting-scribe = "main:main"
+extract-audio = "extract_audio:main"
+transcribe = "transcribe:main"
+wait-for-file = "notify:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pre-commit>=3.7.0",
+    "ruff>=0.6.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+sources = ["src"]
+only-include = ["src"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"main.py" = "main.py"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+addopts = "-ra"
+
+[tool.ruff]
+src = ["src", "tests", "."]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
