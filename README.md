@@ -28,9 +28,11 @@ without touching code.
 - 🎛️ **Tunable extraction** — edit the summary sections, instructions, model, and
   language from the **Settings** page. Add a "Risks" section, change the tone,
   switch language — the next summary follows.
-- ⬆️ **Upload** — drop a video/audio file into the web UI to transcribe +
-  summarise it without Discord.
-- 🌐 **Web UI** — browse meetings, read transcripts and summaries, ask questions.
+- ⬆️ **Upload** — drop a video/audio file into the web UI; it's processed in the
+  **background** so the page never blocks on long recordings (the meeting shows a
+  live "processing" status and refreshes when ready).
+- 🌐 **Web UI** — browse meetings, read transcripts and summaries, ask questions,
+  and **delete** meetings you no longer need.
 - 🔒 **Local transcription** — speech-to-text runs locally via `faster-whisper`
   (no API key, model downloaded once). Only summary/Q&A call out to Claude.
 
@@ -84,12 +86,38 @@ it, only the web UI runs.
 
 ### Discord commands
 
-| You type (mention the bot) | What happens |
+Mention the bot, then a command:
+
+| You type | What happens |
 |---|---|
-| `@Scribe` | Joins your current voice channel and records |
+| `@Scribe help` | Shows the command list |
+| `@Scribe list` | Lists recent meetings with their **ids** |
+| `@Scribe question <your question>` | Answers from the **most recent** meeting |
+| `@Scribe question <id-or-date> <your question>` | Answers from a **specific** meeting |
+| `@Scribe` | Joins your voice channel and records *(see note below)* |
 | `@Scribe stop` | Stops → transcribes → summarises → posts the summary |
-| `@Scribe question what were the action items?` | Answers from the most recent meeting |
-| `@Scribe question 2026-06-30 who owns the docs?` | Answers from the meeting on that date |
+
+**Examples:**
+
+```text
+@Scribe question what were the action items?
+@Scribe question 2026-06-30 who owns the docs?
+@Scribe question standup-2026-06-30_14-30-05 what did Alice commit to?
+@Scribe list
+```
+
+**Choosing between two meetings on the same day.** Every meeting has a unique
+**id** (it includes the time, e.g. `standup-2026-06-30_14-30-05`). A bare date
+like `2026-06-30` can match several meetings — if it does, the bot replies with
+the matching ids so you can repeat the question using the exact one. Run
+`@Scribe list` (or open the web UI) to see ids.
+
+> ⚠️ **Live recording note:** Discord enforced end-to-end encryption (DAVE) on
+> voice in March 2026, and audio reception isn't supported by the bot library yet
+> ([py-cord #3139](https://github.com/Pycord-Development/pycord/issues/3139)). Until
+> that ships, `@Scribe` (record) replies that recording is unavailable — record
+> with another tool and **upload the file in the web UI**, then use summaries and
+> Q&A as normal. See [docs/RECORDING.md](docs/RECORDING.md).
 
 See [docs/DISCORD_SETUP.md](docs/DISCORD_SETUP.md) to create the bot and invite it.
 

@@ -5,10 +5,19 @@
 {% block content %}
   <p><a href="/">&larr; All meetings</a></p>
   <div class="card">
-    <h2>{{ meeting.title or meeting.name }}</h2>
-    <div class="muted">{{ meeting.created_at }}
-      {% if meeting.channel %} · #{{ meeting.channel }}{% endif %}
-      {% if meeting.participants %} · {{ meeting.participants | join(", ") }}{% endif %}
+    <div class="row" style="align-items:flex-start">
+      <div class="grow">
+        <h2>{{ meeting.title or meeting.name }}</h2>
+        <div class="muted">{{ meeting.created_at }}
+          {% if meeting.channel %} · #{{ meeting.channel }}{% endif %}
+          {% if meeting.participants %} · {{ meeting.participants | join(", ") }}{% endif %}
+        </div>
+        <div class="muted" style="margin-top:6px">id: <code>{{ meeting.name }}</code></div>
+      </div>
+      <form action="/meeting/{{ meeting.name }}/delete" method="post"
+            onsubmit="return confirm('Delete this meeting permanently?');">
+        <button type="submit" class="secondary">Delete</button>
+      </form>
     </div>
   </div>
 

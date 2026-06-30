@@ -164,6 +164,13 @@ async def upload(
     return RedirectResponse(url=f"/meeting/{meeting.name}", status_code=303)
 
 
+@app.post("/meeting/{name}/delete")
+def meeting_delete(name: str) -> RedirectResponse:
+    """Delete a meeting (folder + audio + transcript + summary) and go home."""
+    store.delete_meeting(name)
+    return RedirectResponse(url="/", status_code=303)
+
+
 @app.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request, saved: bool = False) -> HTMLResponse:
     return templates.TemplateResponse(

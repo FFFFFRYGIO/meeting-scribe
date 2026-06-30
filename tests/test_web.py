@@ -123,6 +123,14 @@ def test_meeting_not_found(client):
     assert client.get("/meeting/nope").status_code == 404
 
 
+def test_delete_meeting_route(client):
+    m = store.create_meeting(title="bye")
+    resp = client.post(f"/meeting/{m.name}/delete", follow_redirects=False)
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/"
+    assert store.get_meeting(m.name) is None
+
+
 def test_basic_auth_gates_ui_when_configured(client, monkeypatch):
     import base64
 

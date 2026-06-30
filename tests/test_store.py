@@ -59,6 +59,30 @@ def test_find_meeting_by_date_name_and_latest(meetings_dir):
     assert store.find_meeting("nonexistent") is None
 
 
+def test_find_meetings_disambiguates_same_date(meetings_dir):
+    a = store.create_meeting(title="alpha", now=datetime(2026, 6, 30, 10, 0, 0))
+    b = store.create_meeting(title="beta", now=datetime(2026, 6, 30, 14, 0, 0))
+    store.create_meeting(title="other", now=datetime(2026, 7, 1, 9, 0, 0))
+
+    # A bare date matches both meetings that day...
+    same_day = {m.name for m in store.find_meetings("2026-06-30")}
+    assert same_day == {a.name, b.name}
+    # ...but the unique id matches exactly one.
+    assert [m.name for m in store.find_meetings(a.name)] == [a.name]
+    assert store.find_meetings("nothing") == []
+
+
+def test_delete_meeting(meetings_dir):
+    m = store.create_meeting(title="bye")
+    assert m.dir.exists()
+    assert store.delete_meeting(m.name) is True
+    assert store.get_meeting(m.name) is None
+    assert not m.dir.exists()
+    # Missing / traversal names are refused.
+    assert store.delete_meeting("does-not-exist") is False
+    assert store.delete_meeting("../escape") is False
+
+
 def test_update_persists_fields(meetings_dir):
     m = store.create_meeting(title="x")
     m.update(participants=["Alice", "Bob"], duration_seconds=12.0)

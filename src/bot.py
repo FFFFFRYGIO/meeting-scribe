@@ -73,9 +73,13 @@ async def on_message(message: discord.Message) -> None:
     lowered = command.lower()
 
     try:
-        if lowered.startswith(("question", "ask", "pytanie")):
+        if lowered.startswith(("help", "pomoc", "commands", "komendy")):
+            await _handle_help(message)
+        elif lowered.startswith(("question", "ask", "pytanie")):
             await _handle_question(message, command)
-        elif lowered.startswith(("stop", "leave", "koniec", "stop recording")):
+        elif lowered.startswith(("list", "meetings", "lista", "spotkania")):
+            await _handle_list(message)
+        elif lowered.startswith(("stop", "leave", "koniec")):
             await _stop_recording(message)
         else:
             await _start_recording(message)
@@ -224,6 +228,36 @@ def _mix_tracks(sink: WaveSink) -> AudioSegment:
 # --------------------------------------------------------------------------- #
 # Q&A
 # --------------------------------------------------------------------------- #
+async def _handle_help(message: discord.Message) -> None:
+    me = f"@{bot.user.name}"
+    await message.channel.send(
+        "**Meeting Scribe — commands** (mention me):\n"
+        f"• `{me}` — join your voice channel and record  ⚠️ *live recording is "
+        "currently unavailable (Discord DAVE encryption); upload recordings in the "
+        "web UI instead*\n"
+        f"• `{me} stop` — stop recording, then post the summary\n"
+        f"• `{me} list` — list recent meetings with their ids\n"
+        f"• `{me} question <your question>` — ask about the most recent meeting\n"
+        f"• `{me} question <id-or-date> <your question>` — ask about a specific "
+        "meeting (use the id from `list`; an id is unique, a date may match several)\n"
+        f"• `{me} help` — show this help"
+    )
+
+
+async def _handle_list(message: discord.Message) -> None:
+    meetings = store.list_meetings()
+    if not meetings:
+        await message.channel.send("No meetings yet. Upload one in the web UI.")
+        return
+    lines = ["**Recent meetings** (use the id to ask about a specific one):"]
+    for m in meetings[:10]:
+        when = m.created_at[:16].replace("T", " ")
+        flag = "" if m.status == "done" else f" [{m.status}]"
+        lines.append(f"• `{m.name}` — {m.title or '(no title)'} ({when}){flag}")
+    for chunk in _chunks("\n".join(lines), 1900):
+        await message.channel.send(chunk)
+
+
 async def _handle_question(message: discord.Message, command: str) -> None:
     # Drop the leading verb (question/ask/pytanie).
     _, _, rest = command.partition(" ")
@@ -231,11 +265,28 @@ async def _handle_question(message: discord.Message, command: str) -> None:
     if not rest:
         await message.channel.send("Ask me something, e.g. `@me question what were the decisions?`")
         return
+    if not store.list_meetings():
+        await message.channel.send("There are no meetings yet. Upload one in the web UI.")
+        return
 
-    target, question = _split_target(rest)
-    meeting = store.find_meeting(target)
-    if meeting is None:
-        await message.channel.send("I couldn't find a matching meeting yet.")
+    # Treat the first token as a meeting selector only if it actually matches one.
+    first, _, remainder = rest.partition(" ")
+    remainder = remainder.strip()
+    matches = store.find_meetings(first) if first else []
+    if remainder and matches:
+        if len(matches) > 1:
+            listing = "\n".join(f"• `{m.name}` — {m.title or '(no title)'}" for m in matches[:10])
+            await message.channel.send(
+                "That matches several meetings — repeat your question with the exact "
+                f"id:\n{listing}"
+            )
+            return
+        meeting, question = matches[0], remainder
+    else:
+        meeting, question = store.list_meetings()[0], rest
+
+    if not meeting.transcript_text().strip():
+        await message.channel.send("That meeting doesn't have a transcript yet.")
         return
 
     async with message.channel.typing():
@@ -244,14 +295,6 @@ async def _handle_question(message: discord.Message, command: str) -> None:
     header = f"**{meeting.title or meeting.name}** ({meeting.created_at[:10]})\n"
     for chunk in _chunks(header + answer, 1900):
         await message.channel.send(chunk)
-
-
-def _split_target(rest: str) -> tuple[str | None, str]:
-    """If the first token names an existing meeting, treat it as the target."""
-    first, _, remainder = rest.partition(" ")
-    if remainder and store.find_meeting(first) is not None:
-        return first, remainder.strip()
-    return None, rest
 
 
 def _chunks(text: str, size: int):

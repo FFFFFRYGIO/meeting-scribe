@@ -148,24 +148,35 @@ def get_meeting(name: str) -> Meeting | None:
     return _load(meetings_root() / name)
 
 
-def find_meeting(query: str | None) -> Meeting | None:
-    """Best-effort lookup for the Discord bot.
+def find_meetings(query: str) -> list[Meeting]:
+    """Return every meeting matching *query* (newest first).
 
-    With no query, returns the most recent meeting. Otherwise matches the query
-    (case-insensitive) against the folder name, title, or date — handy for
-    "question 2026-06-30 ...".
+    Case-insensitive substring match against the unique name (id), title, or
+    timestamp. A bare date can match several meetings; the unique name never does.
+    """
+    needle = query.strip().lower()
+    if not needle:
+        return []
+    return [
+        m
+        for m in list_meetings()
+        if needle in f"{m.name} {m.title} {m.created_at}".lower()
+    ]
+
+
+def find_meeting(query: str | None) -> Meeting | None:
+    """Single best match for *query*, or the most recent meeting when query is empty.
+
+    Returns the newest match; use :func:`find_meetings` when you need to detect
+    and disambiguate multiple matches.
     """
     meetings = list_meetings()
     if not meetings:
         return None
     if not query:
         return meetings[0]
-    needle = query.strip().lower()
-    for meeting in meetings:
-        haystack = f"{meeting.name} {meeting.title} {meeting.created_at}".lower()
-        if needle in haystack:
-            return meeting
-    return None
+    matches = find_meetings(query)
+    return matches[0] if matches else None
 
 
 def create_meeting(
@@ -222,3 +233,17 @@ def import_audio(meeting: Meeting, src: Path) -> Path:
     dest = ensure_parent(meeting.audio_path)
     shutil.copyfile(src, dest)
     return dest
+
+
+def delete_meeting(name: str) -> bool:
+    """Delete a meeting's folder and everything in it. Returns True if removed.
+
+    Guarded to the meetings root so a crafted name can't escape and delete
+    arbitrary paths.
+    """
+    root = meetings_root().resolve()
+    target = (root / name).resolve()
+    if target.parent != root or not target.is_dir():
+        return False
+    shutil.rmtree(target)
+    return True
