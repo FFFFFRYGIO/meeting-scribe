@@ -49,3 +49,6 @@ select = ["E", "F", "I", "UP", "B"]
 # them where the flat modules under src/ live to resolve `import config`, etc.
 [tool.pyright]
 extraPaths = ["src", "."]
+
+[tool.basedpyright]
+extraPaths = ["src", "."]
