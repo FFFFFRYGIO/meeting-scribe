@@ -168,7 +168,8 @@ def _run_pipeline(meeting_name: str, force: bool = False) -> None:
         if force and media is not None:
             process_meeting(meeting, media, progress_callback=on_progress)  # redo transcription
         elif meeting.transcript_text().strip():
-            summarize_meeting(meeting)  # transcript already done — only the summary remains
+            meeting.update(progress=100)  # transcription already complete → summary stage
+            summarize_meeting(meeting)
         elif media is not None:
             process_meeting(meeting, media, progress_callback=on_progress)
         else:
