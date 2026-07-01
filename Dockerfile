@@ -2,12 +2,17 @@
 # Matches .python-version so `uv sync --frozen` resolves against the lockfile.
 FROM python:3.14-slim
 
-# FFmpeg is required by audio extraction, transcription, and pydub mixing.
-# libopus/libsodium back py-cord's voice receive (recording).
+# FFmpeg: audio extraction, transcription, pydub mixing, Meet audio capture.
+# libopus/libsodium: py-cord voice. pulseaudio/xvfb/dbus: Google Meet bot
+# (headful Chromium under a virtual display, audio via a Pulse null sink).
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ffmpeg \
         libopus0 \
         libsodium23 \
+        pulseaudio \
+        pulseaudio-utils \
+        xvfb \
+        dbus-x11 \
     && rm -rf /var/lib/apt/lists/*
 
 # uv for fast, locked dependency installs.
@@ -23,6 +28,9 @@ COPY src ./src
 COPY main.py app.py ./
 RUN uv sync --frozen --no-dev
 
+# Chromium for the Google Meet bot (Playwright), plus its system deps.
+RUN uv run --no-dev playwright install --with-deps chromium
+
 # Persisted at runtime: settings, recordings, transcripts, summaries.
 # Mount a volume here in Coolify so data survives redeploys.
 RUN mkdir -p data results
@@ -34,5 +42,7 @@ ENV HF_HOME=/app/data/hf-cache
 
 EXPOSE 8000
 
-# Runs the web UI; starts the Discord bot too when DISCORD_BOT_TOKEN is set.
-CMD ["uv", "run", "--no-dev", "python", "app.py"]
+# Entrypoint starts PulseAudio (null sink for Meet capture) + Xvfb, then the app.
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
+ENTRYPOINT ["/app/docker-entrypoint.sh"]

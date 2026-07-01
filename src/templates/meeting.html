@@ -46,6 +46,16 @@
       <div class="banner">
         <div class="spinner"></div>
         <div>
+          {% if meeting.note %}
+            {# Live stage text (e.g. joining/recording a Google Meet). #}
+            <h2>{{ meeting.note }}</h2>
+            <p class="muted" style="margin:0">This page refreshes automatically.</p>
+            {% if meeting.source == "meet" %}
+            <form action="/meeting/{{ meeting.name }}/stop-recording" method="post" style="margin-top:10px">
+              <button type="submit">Stop &amp; process</button>
+            </form>
+            {% endif %}
+          {% else %}
           {% if meeting.refining %}
             <h2>Refining with the accurate model…</h2>
             <p class="muted" style="margin:0">A quick preview is ready below — it will be replaced by a
@@ -70,6 +80,7 @@
             <div class="bar"><div class="bar-fill" style="width: {{ meeting.progress }}%"></div></div>
             <p class="muted" style="margin:8px 0 0">First run also downloads the speech model, so the
             first few percent can take a couple of minutes.</p>
+          {% endif %}
           {% endif %}
         </div>
       </div>

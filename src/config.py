@@ -26,6 +26,10 @@ DEFAULT_LANGUAGE: str | None = None  # None = auto-detect
 # Known projects offered in the UI dropdown (a free-text project is also allowed).
 PROJECT_OPTIONS: list[str] = ["DroneScanner", "DocCompan"]
 
+# Google Meet bot defaults.
+MEET_BOT_NAME: str = "Meeting Scribe"
+MEET_MAX_MINUTES: int = 120  # hard cap on recording length
+
 # Prefix used when generating a default run name.
 RUN_NAME_PREFIX: str = "meeting"
 # Timestamp format used in default run names; filesystem-safe on every OS.

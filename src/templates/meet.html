@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Record a Google Meet · Meeting Scribe{% endblock %}
+{% block content %}
+  <div class="card">
+    <h2>Record a Google Meet</h2>
+    <p class="muted">The bot opens the meeting link, asks to join, and records once a
+    host admits it. Keep this meeting's link handy and admit “{{ bot_name }}” when it knocks.</p>
+    <form action="/meet" method="post">
+      <label for="url">Meet link</label>
+      <input type="text" id="url" name="url" placeholder="https://meet.google.com/abc-defg-hij" required>
+
+      <div class="row">
+        <div class="grow">
+          <label for="title">Title (optional)</label>
+          <input type="text" id="title" name="title" placeholder="auto-generated if blank">
+        </div>
+        <div class="grow">
+          <label for="project">Project</label>
+          <select id="project" name="project">
+            <option value="">—</option>
+            {% for p in projects %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="grow">
+          <label for="project_custom">…or another project</label>
+          <input type="text" id="project_custom" name="project_custom" placeholder="type a project">
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="grow">
+          <label for="bot_name">Bot display name</label>
+          <input type="text" id="bot_name" name="bot_name" value="{{ bot_name }}">
+        </div>
+        <div class="grow">
+          <label for="max_minutes">Max minutes</label>
+          <input type="text" id="max_minutes" name="max_minutes" value="{{ max_minutes }}">
+        </div>
+      </div>
+
+      <p style="margin-top:14px"><button type="submit">Join &amp; record</button></p>
+    </form>
+    <p class="muted">Note: joining Google Meet with a bot is best-effort and subject to
+    Google's terms. The host must admit the bot. You can stop the recording anytime from
+    the meeting page.</p>
+  </div>
+{% endblock %}

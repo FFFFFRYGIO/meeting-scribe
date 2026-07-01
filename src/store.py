@@ -57,6 +57,7 @@ class Meeting:
     error: str = ""  # populated when status == "error"
     progress: int = 0  # transcription progress percent (0-100) while processing
     refining: bool = False  # True during the deep (2nd) transcription pass
+    note: str = ""  # transient status text shown while processing (e.g. Meet stage)
 
     # ---- derived paths -------------------------------------------------
     @property
@@ -105,6 +106,7 @@ class Meeting:
             "error": self.error,
             "progress": self.progress,
             "refining": self.refining,
+            "note": self.note,
         }
 
     def save_metadata(self) -> None:
@@ -142,6 +144,7 @@ def _load(dir: Path) -> Meeting | None:
         error=data.get("error", ""),
         progress=data.get("progress", 0),
         refining=data.get("refining", False),
+        note=data.get("note", ""),
     )
 
 

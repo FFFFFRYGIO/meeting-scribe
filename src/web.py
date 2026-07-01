@@ -27,12 +27,15 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 import ai
 import store
-from config import PROJECT_OPTIONS
+from config import MEET_BOT_NAME, MEET_MAX_MINUTES, PROJECT_OPTIONS
 from process import process_meeting, summarize_meeting
 from settings import ExtractionSettings, Section, load_settings, save_settings
 
 # Model to retry with when the configured (heavier) one fails to transcribe.
 _FALLBACK_MODEL = "medium"
+
+# Active Meet recordings: meeting name -> threading.Event used to stop them.
+_meet_stops: dict[str, threading.Event] = {}
 
 _TS = re.compile(r"^\[(\d{1,2}:\d{2}(?::\d{2})?)\]\s?(.*)$")
 
@@ -199,6 +202,48 @@ def ask_all_page(request: Request, q: str = "") -> HTMLResponse:
     return templates.TemplateResponse(request, "ask.html", {"q": q, "answer": answer})
 
 
+@app.get("/meet", response_class=HTMLResponse)
+def meet_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request,
+        "meet.html",
+        {"projects": PROJECT_OPTIONS, "bot_name": MEET_BOT_NAME, "max_minutes": MEET_MAX_MINUTES},
+    )
+
+
+@app.post("/meet")
+def meet_start(
+    background_tasks: BackgroundTasks,
+    url: Annotated[str, Form()],
+    title: Annotated[str, Form()] = "",
+    project: Annotated[str, Form()] = "",
+    project_custom: Annotated[str, Form()] = "",
+    bot_name: Annotated[str, Form()] = "",
+    max_minutes: Annotated[int, Form()] = MEET_MAX_MINUTES,
+) -> RedirectResponse:
+    """Have the bot join a Google Meet link and record it, then process it."""
+    meeting = store.create_meeting(
+        title=title.strip(),
+        source="meet",
+        project=_resolve_project(project, project_custom),
+        status="processing",
+    )
+    meeting.update(note="Joining the Google Meet…")
+    background_tasks.add_task(
+        _meet_job, meeting.name, url.strip(), (bot_name.strip() or MEET_BOT_NAME), int(max_minutes)
+    )
+    return RedirectResponse(url=f"/meeting/{meeting.name}", status_code=303)
+
+
+@app.post("/meeting/{name}/stop-recording")
+def meeting_stop_recording(name: str) -> RedirectResponse:
+    """Signal an active Meet recording to leave and start processing."""
+    event = _meet_stops.get(name)
+    if event is not None:
+        event.set()
+    return RedirectResponse(url=f"/meeting/{name}", status_code=303)
+
+
 def _locate_media(meeting: store.Meeting) -> Path | None:
     """Best source to (re)process from: the extracted audio, else the raw upload."""
     if meeting.audio_path.exists():
@@ -284,6 +329,34 @@ def _process_with_fallback(meeting: store.Meeting, media: Path, on_progress) -> 
         meeting.update(refining=False)
     else:
         _process_once(meeting, media, on_progress, settings)
+
+
+def _meet_job(meeting_name: str, url: str, bot_name: str, max_minutes: int) -> None:
+    """Background job: record a Google Meet call, then run the normal pipeline."""
+    import meet_bot  # lazy: pulls in Playwright only when actually used
+
+    meeting = store.get_meeting(meeting_name)
+    if meeting is None:
+        return
+    stop = threading.Event()
+    _meet_stops[meeting_name] = stop
+    try:
+        meet_bot.record_meet(
+            url,
+            meeting.audio_path,
+            bot_name=bot_name,
+            max_seconds=max_minutes * 60,
+            stop_event=stop,
+            on_status=lambda s: meeting.update(note=s),
+            artifacts_dir=meeting.dir,
+        )
+    except Exception as exc:  # noqa: BLE001
+        meeting.update(status="error", error=f"Meet recording failed: {exc}", note="")
+        return
+    finally:
+        _meet_stops.pop(meeting_name, None)
+    meeting.update(note="")
+    _run_pipeline(meeting_name)  # transcribe (from the recorded audio) + summarise
 
 
 def _autotitle(meeting: store.Meeting) -> None:

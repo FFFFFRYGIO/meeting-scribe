@@ -18,6 +18,10 @@ are queued. Rough order within each group is by value/effort.
 - **Rename meetings** from the UI.
 - **Ask across all meetings** — `/ask` (nav "Ask all") + `@bot askall`; Claude
   answers from every meeting's summary with citations.
+- **Assign a project** to recordings (dropdown + free text).
+- **Google Meet recording** — a bot joins a Meet link and records it, then the
+  normal pipeline runs. See [GOOGLE_MEET.md](GOOGLE_MEET.md). (Best-effort; needs
+  live selector tuning + a capable server.)
 
 ## 🟡 Next up (bigger, high value)
 - **Speaker diarization** — label "who said what" (pyannote / whisperx). Heavier
