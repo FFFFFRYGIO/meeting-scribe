@@ -9,16 +9,19 @@ tune what gets extracted — all without touching Discord. It runs on port 8000
 from __future__ import annotations
 
 import base64
+import html
 import os
+import re
 import secrets
 import threading
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from pathlib import Path
 from typing import Annotated
 
 import markdown as _markdown
 from fastapi import BackgroundTasks, FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -27,10 +30,39 @@ import store
 from process import process_meeting, summarize_meeting
 from settings import ExtractionSettings, Section, load_settings, save_settings
 
+# Model to retry with when the configured (heavier) one fails to transcribe.
+_FALLBACK_MODEL = "medium"
+
+_TS = re.compile(r"^\[(\d{1,2}:\d{2}(?::\d{2})?)\]\s?(.*)$")
+
+
+def _ts_to_seconds(ts: str) -> int:
+    parts = [int(p) for p in ts.split(":")]
+    return (
+        parts[0] * 60 + parts[1] if len(parts) == 2 else parts[0] * 3600 + parts[1] * 60 + parts[2]
+    )
+
+
+def render_transcript_html(text: str) -> str:
+    """Render a transcript to HTML, turning ``[m:ss]`` prefixes into seek links."""
+    lines = []
+    for line in (text or "").splitlines():
+        m = _TS.match(line)
+        if m:
+            secs = _ts_to_seconds(m.group(1))
+            anchor = f'<a href="#" class="ts" data-s="{secs}">[{m.group(1)}]</a>'
+            lines.append(f"{anchor} {html.escape(m.group(2))}")
+        else:
+            lines.append(html.escape(line))
+    return "<br>".join(lines)
+
+
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 # Render Markdown summaries/answers to HTML in templates via `{{ text | md }}`.
 templates.env.filters["md"] = lambda text: _markdown.markdown(text or "", extensions=["nl2br"])
+# Render a transcript with clickable timestamps via `{{ text | ts_transcript }}`.
+templates.env.filters["ts_transcript"] = render_transcript_html
 
 
 @asynccontextmanager
@@ -166,15 +198,16 @@ def _run_pipeline(meeting_name: str, force: bool = False) -> None:
         meeting.update(progress=0)
         media = _locate_media(meeting)
         if force and media is not None:
-            process_meeting(meeting, media, progress_callback=on_progress)  # redo transcription
+            _process_with_fallback(meeting, media, on_progress)  # redo transcription
         elif meeting.transcript_text().strip():
             meeting.update(progress=100)  # transcription already complete → summary stage
             summarize_meeting(meeting)
         elif media is not None:
-            process_meeting(meeting, media, progress_callback=on_progress)
+            _process_with_fallback(meeting, media, on_progress)
         else:
             meeting.update(status="error", error="Source file is missing — please re-upload.")
             return
+        _autotitle(meeting)
         meeting.update(status="done", error="", progress=100)
     except Exception as exc:  # noqa: BLE001 — record the failure for the UI
         meeting.update(status="error", error=str(exc))
@@ -183,6 +216,39 @@ def _run_pipeline(meeting_name: str, force: bool = False) -> None:
         if meeting.audio_path.exists() and meeting.transcript_text().strip():
             for src in meeting.dir.glob("source.*"):
                 src.unlink(missing_ok=True)
+
+
+def _process_with_fallback(meeting: store.Meeting, media: Path, on_progress) -> None:
+    """Transcribe + summarise; if the configured model fails, retry with a lighter one."""
+    settings = load_settings()
+    try:
+        process_meeting(meeting, media, settings=settings, progress_callback=on_progress)
+    except Exception as exc:  # noqa: BLE001
+        if settings.whisper_model == _FALLBACK_MODEL:
+            raise
+        print(
+            f"Transcription with '{settings.whisper_model}' failed ({exc}); "
+            f"retrying with '{_FALLBACK_MODEL}'."
+        )
+        meeting.update(progress=0)
+        process_meeting(
+            meeting,
+            media,
+            settings=replace(settings, whisper_model=_FALLBACK_MODEL),
+            progress_callback=on_progress,
+        )
+
+
+def _autotitle(meeting: store.Meeting) -> None:
+    """Give the meeting an AI-generated title when it doesn't have one yet."""
+    if meeting.title.strip():
+        return
+    try:
+        generated = ai.title(meeting.transcript_text())
+        if generated:
+            meeting.update(title=generated)
+    except Exception as exc:  # noqa: BLE001 — a title failure must not fail processing
+        print(f"Auto-title failed: {exc}")
 
 
 @app.post("/upload")
@@ -198,9 +264,8 @@ async def upload(
     page never blocks on long recordings.
     """
     suffix = Path(file.filename or "upload").suffix or ".mp3"
-    meeting = store.create_meeting(
-        title=title or (file.filename or "Upload"), source="upload", status="processing"
-    )
+    # Leave the title empty when not given so the pipeline auto-generates one.
+    meeting = store.create_meeting(title=title.strip(), source="upload", status="processing")
 
     media = meeting.dir / f"source{suffix}"
     with media.open("wb") as out:
@@ -220,6 +285,34 @@ def meeting_reprocess(name: str, background_tasks: BackgroundTasks) -> RedirectR
     meeting.update(status="processing", error="")
     background_tasks.add_task(_run_pipeline, meeting.name, True)  # force re-transcription
     return RedirectResponse(url=f"/meeting/{meeting.name}", status_code=303)
+
+
+@app.get("/meeting/{name}/audio")
+def meeting_audio(name: str) -> Response:
+    """Serve the meeting's audio for the in-page player."""
+    meeting = store.get_meeting(name)
+    if meeting is None or not meeting.has_audio:
+        return Response("Not found", status_code=404)
+    return FileResponse(meeting.audio_path, media_type="audio/mpeg")
+
+
+@app.get("/meeting/{name}/download/{kind}")
+def meeting_download(name: str, kind: str) -> Response:
+    """Download the transcript (.txt) or summary (.md)."""
+    meeting = store.get_meeting(name)
+    if meeting is None:
+        return Response("Not found", status_code=404)
+    if kind == "summary" and meeting.has_summary:
+        return FileResponse(
+            meeting.summary_path, media_type="text/markdown", filename=f"{meeting.name}-summary.md"
+        )
+    if kind == "transcript" and meeting.has_transcript:
+        return FileResponse(
+            meeting.transcript_path,
+            media_type="text/plain",
+            filename=f"{meeting.name}-transcript.txt",
+        )
+    return Response("Not found", status_code=404)
 
 
 @app.post("/meeting/{name}/delete")

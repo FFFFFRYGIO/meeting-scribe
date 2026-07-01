@@ -26,6 +26,8 @@ def client(tmp_path, monkeypatch):
     # Auth is disabled unless a test opts in (keeps these tests hermetic).
     monkeypatch.delenv("AUTH_USERNAME", raising=False)
     monkeypatch.delenv("AUTH_PASSWORD", raising=False)
+    # Stub auto-title so tests never hit the network (a test can override).
+    monkeypatch.setattr(ai, "title", lambda *a, **k: "")
     return TestClient(web.app)
 
 
@@ -193,6 +195,41 @@ def test_reprocess_marks_error_when_source_missing(client):
 
 def test_meeting_not_found(client):
     assert client.get("/meeting/nope").status_code == 404
+
+
+def test_render_transcript_html_makes_timestamps_clickable():
+    out = web.render_transcript_html("[1:05] hello <world>\nno timestamp here")
+    assert '<a href="#" class="ts" data-s="65">[1:05]</a> hello &lt;world&gt;' in out
+    assert "no timestamp here" in out  # plain lines pass through (escaped)
+
+
+def test_audio_route_serves_and_404s(client):
+    m = store.create_meeting(title="with audio")
+    assert client.get(f"/meeting/{m.name}/audio").status_code == 404  # no audio yet
+    m.audio_path.write_bytes(b"ID3fake")
+    assert client.get(f"/meeting/{m.name}/audio").status_code == 200
+
+
+def test_download_routes(client):
+    m = store.create_meeting(title="dl")
+    store.save_transcript(m, "[0:00] hi")
+    store.save_summary(m, "# S")
+    r = client.get(f"/meeting/{m.name}/download/transcript")
+    assert r.status_code == 200 and "attachment" in r.headers.get("content-disposition", "")
+    assert client.get(f"/meeting/{m.name}/download/summary").status_code == 200
+    assert client.get(f"/meeting/{m.name}/download/bogus").status_code == 404
+
+
+def test_upload_auto_titles_when_blank(client, monkeypatch):
+    monkeypatch.setattr(ai, "title", lambda *a, **k: "Sprint Planning")
+
+    def fake_process(meeting, media, *a, **k):
+        store.save_transcript(meeting, "[0:00] we planned the sprint")
+        store.save_summary(meeting, "s")
+
+    monkeypatch.setattr(web, "process_meeting", fake_process)
+    client.post("/upload", files={"file": ("x.mp3", b"x", "audio/mpeg")}, follow_redirects=False)
+    assert store.list_meetings()[0].title == "Sprint Planning"
 
 
 def test_delete_meeting_route(client):

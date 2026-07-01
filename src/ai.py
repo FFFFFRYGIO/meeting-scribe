@@ -101,6 +101,33 @@ def answer(
     return _first_text(message)
 
 
+def title(transcript: str, settings: ExtractionSettings | None = None) -> str:
+    """Generate a short, specific meeting title from the transcript (or "")."""
+    settings = settings or load_settings()
+    if not transcript.strip():
+        return ""
+    client = _client()
+    message = client.messages.create(
+        model=settings.claude_model,
+        max_tokens=40,
+        system=(
+            "You write a concise, specific meeting title of at most 8 words. "
+            "Reply with only the title — no quotes, no trailing punctuation. "
+            "Use the language of the transcript."
+        ),
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Meeting transcript (may be truncated):"},
+                    {"type": "text", "text": transcript[:8000]},
+                ],
+            }
+        ],
+    )
+    return _first_text(message).strip().strip('"').strip()[:120]
+
+
 def _first_text(message) -> str:
     """Pull the text out of a Claude response message."""
     parts = [block.text for block in message.content if block.type == "text"]

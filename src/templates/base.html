@@ -43,6 +43,18 @@
     .bar-fill { height:100%; background:var(--accent); border-radius:999px; transition:width 0.4s ease; }
     .bar-indef { width:35% !important; animation:slide 1.4s ease-in-out infinite; }
     @keyframes slide { 0%{margin-left:-35%} 100%{margin-left:100%} }
+    audio { width:100%; margin-top:4px; }
+    .transcript { background:#0f1218; border:1px solid var(--line); border-radius:8px; padding:14px;
+      font:13px/1.7 ui-monospace, monospace; max-height:520px; overflow:auto; white-space:normal; }
+    .transcript a.ts { color:var(--accent); text-decoration:none; margin-right:4px; }
+    .transcript a.ts:hover { text-decoration:underline; }
+    .actions { display:flex; gap:8px; }
+    .actions a, .actions button { font-size:13px; padding:5px 12px; }
+    a.btn { background:#222733; color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:6px 12px; display:inline-block; }
+    a.btn:hover { text-decoration:none; border-color:var(--accent); }
+    .cardhead { display:flex; align-items:center; gap:12px; margin-bottom:10px; }
+    .cardhead h2 { margin:0; }
+    .cardhead .actions { margin-left:auto; }
   </style>
 </head>
 <body>

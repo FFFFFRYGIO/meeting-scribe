@@ -81,21 +81,64 @@
     {% endif %}
   </div>
 
+  {% if meeting.has_audio %}
   <div class="card">
-    <h2>Summary</h2>
+    <h2>Recording</h2>
+    <audio id="player" controls preload="none" src="/meeting/{{ meeting.name }}/audio"></audio>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <div class="cardhead">
+      <h2>Summary</h2>
+      {% if summary %}
+      <div class="actions">
+        <button type="button" class="secondary" onclick="copyText('sumraw', this)">Copy</button>
+        <a class="btn" href="/meeting/{{ meeting.name }}/download/summary">Download .md</a>
+      </div>
+      {% endif %}
+    </div>
     {% if summary %}
       <div class="summary">{{ summary | md | safe }}</div>
+      <textarea id="sumraw" hidden>{{ summary }}</textarea>
     {% else %}
       <p class="muted">No summary yet.</p>
     {% endif %}
   </div>
 
   <div class="card">
-    <h2>Transcript</h2>
+    <div class="cardhead">
+      <h2>Transcript</h2>
+      {% if transcript %}
+      <div class="actions">
+        <button type="button" class="secondary" onclick="copyText('txraw', this)">Copy</button>
+        <a class="btn" href="/meeting/{{ meeting.name }}/download/transcript">Download .txt</a>
+      </div>
+      {% endif %}
+    </div>
     {% if transcript %}
-      <pre>{{ transcript }}</pre>
+      <div class="transcript">{{ transcript | ts_transcript | safe }}</div>
+      <textarea id="txraw" hidden>{{ transcript }}</textarea>
     {% else %}
       <p class="muted">No transcript yet.</p>
     {% endif %}
   </div>
+
+  <script>
+    (function () {
+      var player = document.getElementById('player');
+      document.querySelectorAll('.transcript a.ts').forEach(function (a) {
+        a.addEventListener('click', function (e) {
+          e.preventDefault();
+          if (player) { player.currentTime = +a.dataset.s; player.play(); }
+        });
+      });
+      window.copyText = function (id, btn) {
+        var el = document.getElementById(id);
+        navigator.clipboard.writeText(el.value).then(function () {
+          var t = btn.textContent; btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = t; }, 1200);
+        });
+      };
+    })();
+  </script>
 {% endblock %}
