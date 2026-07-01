@@ -39,6 +39,10 @@
     .steps li { padding:3px 0; color:var(--muted); }
     .steps li.done { color:#7ee787; }
     .steps li.active { color:var(--fg); font-weight:600; }
+    .bar { height:12px; background:#0f1218; border:1px solid var(--line); border-radius:999px; overflow:hidden; margin-top:10px; }
+    .bar-fill { height:100%; background:var(--accent); border-radius:999px; transition:width 0.4s ease; }
+    .bar-indef { width:35% !important; animation:slide 1.4s ease-in-out infinite; }
+    @keyframes slide { 0%{margin-left:-35%} 100%{margin-left:100%} }
   </style>
 </head>
 <body>

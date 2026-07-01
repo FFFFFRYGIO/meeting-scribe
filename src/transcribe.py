@@ -17,6 +17,7 @@ Used from the command line::
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
 from pathlib import Path
 
 from faster_whisper import WhisperModel
@@ -32,10 +33,13 @@ def transcribe(
     language: str | None = DEFAULT_LANGUAGE,
     device: str = "auto",
     compute_type: str = "int8",
+    progress_callback: Callable[[float], None] | None = None,
 ) -> Path:
     """Transcribe *audio_path* and write the text to *output_path*.
 
-    Returns the path of the created transcript file.
+    Returns the path of the created transcript file. If *progress_callback* is
+    given, it's called with a fraction 0.0-1.0 as segments are processed (based on
+    the segment end time vs. the total audio duration).
     """
     audio_path = Path(audio_path)
     output_path = ensure_parent(Path(output_path))
@@ -49,13 +53,18 @@ def transcribe(
     print(f"Transcribing {audio_path} ...")
     segments, info = model.transcribe(str(audio_path), language=language)
     print(f"Detected language: {info.language} (probability {info.language_probability:.2f})")
+    total = getattr(info, "duration", 0) or 0
 
     with output_path.open("w", encoding="utf-8") as fh:
         for segment in segments:
             line = segment.text.strip()
             print(line)
             fh.write(line + "\n")
+            if progress_callback and total:
+                progress_callback(min(segment.end / total, 1.0))
 
+    if progress_callback:
+        progress_callback(1.0)
     print(f"Saved transcript: {output_path}")
     return output_path
 

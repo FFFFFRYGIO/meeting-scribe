@@ -8,6 +8,7 @@ meeting. Each step is skippable/observable so callers can report progress.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from ai import summarize
@@ -22,11 +23,13 @@ def transcribe_meeting(
     meeting: Meeting,
     media: Path,
     settings: ExtractionSettings | None = None,
+    progress_callback: Callable[[float], None] | None = None,
 ) -> str:
     """Transcribe *media* into the meeting and return the transcript text.
 
     A video input is converted to audio first; an audio input is transcribed
     directly. The (audio) recording is stored alongside as the meeting's audio.
+    *progress_callback* receives 0.0-1.0 as transcription proceeds.
     """
     settings = settings or load_settings()
     media = Path(media)
@@ -44,6 +47,7 @@ def transcribe_meeting(
         meeting.transcript_path,
         model_size=settings.whisper_model,
         language=settings.language,
+        progress_callback=progress_callback,
     )
     return meeting.transcript_text()
 
@@ -63,10 +67,11 @@ def process_meeting(
     meeting: Meeting,
     media: Path,
     settings: ExtractionSettings | None = None,
+    progress_callback: Callable[[float], None] | None = None,
 ) -> Meeting:
     """Full pipeline: transcribe *media*, then summarise, into *meeting*."""
     settings = settings or load_settings()
-    transcribe_meeting(meeting, media, settings)
+    transcribe_meeting(meeting, media, settings, progress_callback)
     summarize_meeting(meeting, settings)
     return meeting
 

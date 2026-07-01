@@ -41,10 +41,15 @@
               <li class="done">✓ 1. Transcribing the audio</li>
               <li class="active">⏳ 2. Writing the summary…</li>
             {% else %}
-              <li class="active">⏳ 1. Transcribing the audio… <span class="muted">(the slow part)</span></li>
+              <li class="active">⏳ 1. Transcribing the audio — {{ meeting.progress }}%</li>
               <li>2. Writing the summary</li>
             {% endif %}
           </ul>
+          {% if meeting.has_transcript %}
+            <div class="bar"><div class="bar-fill bar-indef"></div></div>
+          {% else %}
+            <div class="bar"><div class="bar-fill" style="width: {{ meeting.progress }}%"></div></div>
+          {% endif %}
         </div>
       </div>
     </div>

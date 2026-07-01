@@ -153,18 +153,28 @@ def _run_pipeline(meeting_name: str, force: bool = False) -> None:
     meeting = store.get_meeting(meeting_name)
     if meeting is None:
         return
+
+    last_pct = [-1]
+
+    def on_progress(fraction: float) -> None:
+        pct = min(100, int(fraction * 100))
+        if pct != last_pct[0]:  # only persist when the integer percent changes
+            last_pct[0] = pct
+            meeting.update(progress=pct)
+
     try:
+        meeting.update(progress=0)
         media = _locate_media(meeting)
         if force and media is not None:
-            process_meeting(meeting, media)  # redo transcription with current settings
+            process_meeting(meeting, media, progress_callback=on_progress)  # redo transcription
         elif meeting.transcript_text().strip():
             summarize_meeting(meeting)  # transcript already done — only the summary remains
         elif media is not None:
-            process_meeting(meeting, media)
+            process_meeting(meeting, media, progress_callback=on_progress)
         else:
             meeting.update(status="error", error="Source file is missing — please re-upload.")
             return
-        meeting.update(status="done", error="")
+        meeting.update(status="done", error="", progress=100)
     except Exception as exc:  # noqa: BLE001 — record the failure for the UI
         meeting.update(status="error", error=str(exc))
     finally:

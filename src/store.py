@@ -53,6 +53,7 @@ class Meeting:
     duration_seconds: float | None = None
     status: str = "done"  # "processing" | "done" | "error"
     error: str = ""  # populated when status == "error"
+    progress: int = 0  # transcription progress percent (0-100) while processing
 
     # ---- derived paths -------------------------------------------------
     @property
@@ -98,6 +99,7 @@ class Meeting:
             "duration_seconds": self.duration_seconds,
             "status": self.status,
             "error": self.error,
+            "progress": self.progress,
         }
 
     def save_metadata(self) -> None:
@@ -132,6 +134,7 @@ def _load(dir: Path) -> Meeting | None:
         duration_seconds=data.get("duration_seconds"),
         status=data.get("status", "done"),  # default keeps old meetings valid
         error=data.get("error", ""),
+        progress=data.get("progress", 0),
     )
 
 

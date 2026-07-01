@@ -113,6 +113,27 @@ def test_upload_marks_error_on_failure(client, monkeypatch):
     assert m.status == "error" and "ffmpeg blew up" in m.error
 
 
+def test_progress_callback_updates_meeting(client, monkeypatch):
+    seen = {}
+
+    def fake_process(meeting, media, *a, progress_callback=None, **k):
+        if progress_callback:
+            progress_callback(0.5)
+            seen["mid"] = store.get_meeting(meeting.name).progress  # persisted mid-run
+        store.save_transcript(meeting, "t")
+        store.save_summary(meeting, "s")
+
+    monkeypatch.setattr(web, "process_meeting", fake_process)
+    client.post(
+        "/upload",
+        files={"file": ("c.mp3", b"x", "audio/mpeg")},
+        follow_redirects=False,
+    )
+    m = store.list_meetings()[0]
+    assert seen["mid"] == 50  # progress persisted during transcription
+    assert m.status == "done" and m.progress == 100
+
+
 def test_processing_meeting_page_auto_refreshes(client):
     m = store.create_meeting(title="In progress", status="processing")
     body = client.get(f"/meeting/{m.name}").text

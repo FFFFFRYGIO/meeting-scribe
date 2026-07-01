@@ -32,7 +32,7 @@
           </div>
           <div>
             <span class="pill">{{ m.source }}</span>
-            {% if m.status == "processing" %}<span class="pill">⏳ processing</span>
+            {% if m.status == "processing" %}<span class="pill">⏳ processing{% if not m.has_transcript and m.progress %} {{ m.progress }}%{% endif %}</span>
             {% elif m.status == "error" %}<span class="pill">⚠️ error</span>{% endif %}
             {% if m.has_summary %}<span class="pill">summary</span>{% endif %}
             {% if m.has_transcript %}<span class="pill">transcript</span>{% endif %}
