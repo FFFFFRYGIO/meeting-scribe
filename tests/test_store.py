@@ -106,6 +106,18 @@ def test_search_matches_transcript_and_title(meetings_dir):
     assert store.search("   ") == []
 
 
+def test_corpus_labels_meetings(meetings_dir):
+    a = store.create_meeting(title="Planning", now=datetime(2026, 6, 1, 9, 0, 0))
+    store.save_summary(a, "budget agreed")
+    b = store.create_meeting(title="No content", now=datetime(2026, 6, 2, 9, 0, 0))
+
+    text = store.corpus()
+    assert "### Planning (2026-06-01, id=" in text
+    assert "budget agreed" in text
+    assert "No content" not in text  # meetings without summary/transcript are skipped
+    assert store.corpus() and b.name not in text
+
+
 def test_update_persists_fields(meetings_dir):
     m = store.create_meeting(title="x")
     m.update(participants=["Alice", "Bob"], duration_seconds=12.0)

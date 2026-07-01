@@ -290,6 +290,23 @@ def search(query: str) -> list[tuple[Meeting, str]]:
     return results
 
 
+def corpus(limit: int = 50, excerpt: int = 2000) -> str:
+    """Build a compact, labelled corpus of recent meetings for cross-meeting Q&A.
+
+    Prefers each meeting's summary (short); falls back to a transcript excerpt.
+    Each block is headed with the title, date, and id so the model can cite it.
+    """
+    blocks = []
+    for meeting in list_meetings()[:limit]:
+        body = meeting.summary_text().strip() or meeting.transcript_text()[:excerpt].strip()
+        if not body:
+            continue
+        label = meeting.title or meeting.name
+        header = f"### {label} ({meeting.created_at[:10]}, id={meeting.name})"
+        blocks.append(f"{header}\n{body}")
+    return "\n\n".join(blocks)
+
+
 def delete_meeting(name: str) -> bool:
     """Delete a meeting's folder and everything in it. Returns True if removed.
 

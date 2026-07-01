@@ -75,6 +75,8 @@ async def on_message(message: discord.Message) -> None:
     try:
         if lowered.startswith(("help", "pomoc", "commands", "komendy")):
             await _handle_help(message)
+        elif lowered.startswith(("askall", "ask-all", "askeverything")):
+            await _handle_ask_all(message, command)
         elif lowered.startswith(("question", "ask", "pytanie")):
             await _handle_question(message, command)
         elif lowered.startswith(("search", "szukaj")):
@@ -245,6 +247,7 @@ async def _handle_help(message: discord.Message) -> None:
         f"• `{me} question <your question>` — ask about the most recent meeting\n"
         f"• `{me} question <id-or-date> <your question>` — ask about a specific "
         "meeting (use the id from `list`; an id is unique, a date may match several)\n"
+        f"• `{me} askall <your question>` — answer across all meetings, with citations\n"
         f"• `{me} help` — show this help"
     )
 
@@ -302,6 +305,22 @@ async def _handle_question(message: discord.Message, command: str) -> None:
 
     header = f"**{meeting.title or meeting.name}** ({meeting.created_at[:10]})\n"
     for chunk in _chunks(header + answer, 1900):
+        await message.channel.send(chunk)
+
+
+async def _handle_ask_all(message: discord.Message, command: str) -> None:
+    _, _, rest = command.partition(" ")
+    rest = rest.strip()
+    if not rest:
+        await message.channel.send("Usage: `@me askall <question>`")
+        return
+    corpus = store.corpus()
+    if not corpus.strip():
+        await message.channel.send("There are no meetings yet.")
+        return
+    async with message.channel.typing():
+        answer = await asyncio.to_thread(ai.ask_across, rest, corpus)
+    for chunk in _chunks(answer, 1900):
         await message.channel.send(chunk)
 
 

@@ -85,3 +85,21 @@ def test_answer_grounds_in_transcript(monkeypatch):
 def test_answer_without_transcript(monkeypatch):
     monkeypatch.setattr(ai, "_client", lambda: (_ for _ in ()).throw(AssertionError("called")))
     assert "don't have a transcript" in ai.answer("q?", "")
+
+
+def test_ask_across_includes_corpus(monkeypatch):
+    recorder = []
+    monkeypatch.setattr(ai, "_client", lambda: _fake_client(recorder))
+
+    out = ai.ask_across("What's the budget?", "### Meeting A\nbudget is 50k")
+
+    assert out == "FAKE RESPONSE"
+    content = recorder[0]["messages"][0]["content"]
+    assert content[1]["text"] == "### Meeting A\nbudget is 50k"
+    assert content[1]["cache_control"] == {"type": "ephemeral"}
+    assert "What's the budget?" in content[2]["text"]
+
+
+def test_ask_across_empty_corpus(monkeypatch):
+    monkeypatch.setattr(ai, "_client", lambda: (_ for _ in ()).throw(AssertionError("called")))
+    assert "no meetings" in ai.ask_across("q?", "   ")

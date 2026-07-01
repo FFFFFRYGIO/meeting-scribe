@@ -169,6 +169,13 @@ def search_page(request: Request, q: str = "") -> HTMLResponse:
     return templates.TemplateResponse(request, "search.html", {"q": q, "results": results})
 
 
+@app.get("/ask", response_class=HTMLResponse)
+def ask_all_page(request: Request, q: str = "") -> HTMLResponse:
+    """Answer a question across all meetings, citing the ones it used."""
+    answer = ai.ask_across(q, store.corpus()) if q.strip() else ""
+    return templates.TemplateResponse(request, "ask.html", {"q": q, "answer": answer})
+
+
 def _locate_media(meeting: store.Meeting) -> Path | None:
     """Best source to (re)process from: the extracted audio, else the raw upload."""
     if meeting.audio_path.exists():

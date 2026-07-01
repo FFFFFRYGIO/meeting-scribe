@@ -127,6 +127,37 @@ def answer(
     return _first_text(message)
 
 
+def ask_across(question: str, corpus: str, settings: ExtractionSettings | None = None) -> str:
+    """Answer *question* using notes from many meetings (*corpus*), with citations."""
+    settings = settings or load_settings()
+    if not corpus.strip():
+        return "There are no meetings to search yet."
+    client = _client()
+    system = (
+        "You answer questions using notes from multiple meetings. Base every "
+        "statement only on the notes provided, and cite the meeting title and date "
+        "for facts you use. If the answer is not in the notes, say so. Answer in "
+        "the language of the question."
+    )
+    with client.messages.stream(
+        model=settings.claude_model,
+        max_tokens=_MAX_TOKENS,
+        system=system,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Notes from meetings:"},
+                    {"type": "text", "text": corpus, "cache_control": {"type": "ephemeral"}},
+                    {"type": "text", "text": f"Question: {question}"},
+                ],
+            }
+        ],
+    ) as stream:
+        message = stream.get_final_message()
+    return _first_text(message)
+
+
 def title(transcript: str, settings: ExtractionSettings | None = None) -> str:
     """Generate a short, specific meeting title from the transcript (or "")."""
     settings = settings or load_settings()

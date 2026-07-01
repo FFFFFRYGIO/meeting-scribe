@@ -16,9 +16,10 @@ are queued. Rough order within each group is by value/effort.
 - **Threaded Q&A history** — questions/answers persisted per meeting, shown as a
   conversation; follow-ups keep prior context (UI + Discord).
 - **Rename meetings** from the UI.
+- **Ask across all meetings** — `/ask` (nav "Ask all") + `@bot askall`; Claude
+  answers from every meeting's summary with citations.
 
 ## 🟡 Next up (bigger, high value)
-- **"Ask across all meetings"** — retrieve relevant snippets across meetings, then answer.
 - **Speaker diarization** — label "who said what" (pyannote / whisperx). Heavier
   dependency and more CPU; biggest quality jump for multi-person meetings.
 - **Extraction templates** — presets of summary sections (standup / sales call /

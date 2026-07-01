@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Ask all meetings · Meeting Scribe{% endblock %}
+{% block content %}
+  <div class="card">
+    <h2>Ask across all meetings</h2>
+    <p class="muted">Ask a question and get an answer drawn from every meeting, with
+    citations to the ones it used.</p>
+    <form action="/ask" method="get">
+      <div class="row">
+        <div class="grow"><input type="text" name="q" value="{{ q }}" placeholder="e.g. What did we decide about the budget?" autofocus></div>
+        <div><button type="submit">Ask</button></div>
+      </div>
+    </form>
+  </div>
+
+  {% if q %}
+  <div class="card">
+    <div class="muted">🙋 {{ q }}</div>
+    <div class="summary">{{ answer | md | safe }}</div>
+  </div>
+  {% endif %}
+{% endblock %}

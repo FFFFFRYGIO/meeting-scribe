@@ -97,6 +97,22 @@ def test_search_finds_text(client):
     assert "0 results" in client.get("/search", params={"q": "zzz-nope"}).text
 
 
+def test_ask_all_uses_corpus(client, monkeypatch):
+    m = store.create_meeting(title="Budget review")
+    store.save_summary(m, "budget is 50k")
+    captured = {}
+
+    def fake_ask(question, corpus, *a, **k):
+        captured["q"] = question
+        captured["corpus"] = corpus
+        return "Across meetings: 50k (Budget review)"
+
+    monkeypatch.setattr(ai, "ask_across", fake_ask)
+    body = client.get("/ask", params={"q": "budget?"}).text
+    assert "Across meetings: 50k" in body
+    assert "Budget review" in captured["corpus"] and captured["q"] == "budget?"
+
+
 def test_rename_updates_title(client):
     m = store.create_meeting(title="old")
     client.post(f"/meeting/{m.name}/rename", data={"title": "New name"}, follow_redirects=False)
