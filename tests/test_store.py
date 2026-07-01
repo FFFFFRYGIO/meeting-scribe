@@ -83,6 +83,29 @@ def test_delete_meeting(meetings_dir):
     assert store.delete_meeting("../escape") is False
 
 
+def test_qa_history_round_trip(meetings_dir):
+    m = store.create_meeting(title="qa")
+    assert store.load_qa(m) == []
+    store.append_qa(m, "q1", "a1")
+    store.append_qa(m, "q2", "a2")
+    qa = store.load_qa(m)
+    assert [(t["q"], t["a"]) for t in qa] == [("q1", "a1"), ("q2", "a2")]
+    assert all("at" in t for t in qa)
+
+
+def test_search_matches_transcript_and_title(meetings_dir):
+    a = store.create_meeting(title="Planning", now=datetime(2026, 6, 1, 9, 0, 0))
+    store.save_transcript(a, "we discussed the roadmap and hiring")
+    b = store.create_meeting(title="Roadmap sync", now=datetime(2026, 6, 2, 9, 0, 0))
+    store.save_transcript(b, "unrelated content")
+
+    names = {m.name for m, _ in store.search("roadmap")}
+    assert names == {a.name, b.name}  # matches transcript (a) and title (b)
+    hits = store.search("hiring")
+    assert len(hits) == 1 and "hiring" in hits[0][1].lower()  # snippet contains the term
+    assert store.search("   ") == []
+
+
 def test_update_persists_fields(meetings_dir):
     m = store.create_meeting(title="x")
     m.update(participants=["Alice", "Bob"], duration_seconds=12.0)

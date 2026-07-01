@@ -3,23 +3,27 @@
 Ideas we agreed to build. The **quick wins** below are already shipped; the rest
 are queued. Rough order within each group is by value/effort.
 
-## ✅ Done (quick wins)
+## ✅ Done
 - **In-page audio player** on the meeting page (`/meeting/{name}/audio`).
 - **Timestamps in transcripts** (`[m:ss]`), clickable to seek the player.
 - **Auto-generated meeting titles** (Claude) when no title is given on upload.
 - **Export & copy** — download summary (`.md`) / transcript (`.txt`) + copy buttons.
 - **Automatic model fallback** — if the configured Whisper model fails (e.g. OOM),
   retry transcription with `medium`.
+- **Two-pass transcription** — fast `small` preview (transcript + summary shown
+  immediately), then a background `large-v3` refine that replaces both.
+- **Search across meetings** — header search box + `/search`, plus `@bot search`.
+- **Threaded Q&A history** — questions/answers persisted per meeting, shown as a
+  conversation; follow-ups keep prior context (UI + Discord).
+- **Rename meetings** from the UI.
 
 ## 🟡 Next up (bigger, high value)
-- **Search across meetings** — a search box over transcripts/summaries, plus an
-  "ask across all meetings" mode (retrieve relevant snippets, then answer).
+- **"Ask across all meetings"** — retrieve relevant snippets across meetings, then answer.
 - **Speaker diarization** — label "who said what" (pyannote / whisperx). Heavier
   dependency and more CPU; biggest quality jump for multi-person meetings.
 - **Extraction templates** — presets of summary sections (standup / sales call /
   interview) selectable per meeting, on top of the current tunable settings.
-- **Threaded Q&A + citations** — follow-up questions with memory, and answers that
-  cite transcript timestamps/quotes.
+- **Q&A citations** — answers that cite transcript timestamps/quotes.
 - **Email the summary** — send the summary to participants via the connected Gmail
   after processing.
 

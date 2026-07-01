@@ -28,6 +28,7 @@ METADATA_NAME = "metadata.json"
 TRANSCRIPT_NAME = "transcript.txt"
 SUMMARY_NAME = "summary.md"
 AUDIO_NAME = "audio.mp3"
+QA_NAME = "qa.jsonl"
 
 # Characters allowed in a meeting folder name (filesystem-safe on every OS).
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
@@ -54,6 +55,7 @@ class Meeting:
     status: str = "done"  # "processing" | "done" | "error"
     error: str = ""  # populated when status == "error"
     progress: int = 0  # transcription progress percent (0-100) while processing
+    refining: bool = False  # True during the deep (2nd) transcription pass
 
     # ---- derived paths -------------------------------------------------
     @property
@@ -100,6 +102,7 @@ class Meeting:
             "status": self.status,
             "error": self.error,
             "progress": self.progress,
+            "refining": self.refining,
         }
 
     def save_metadata(self) -> None:
@@ -135,6 +138,7 @@ def _load(dir: Path) -> Meeting | None:
         status=data.get("status", "done"),  # default keeps old meetings valid
         error=data.get("error", ""),
         progress=data.get("progress", 0),
+        refining=data.get("refining", False),
     )
 
 
@@ -160,11 +164,7 @@ def find_meetings(query: str) -> list[Meeting]:
     needle = query.strip().lower()
     if not needle:
         return []
-    return [
-        m
-        for m in list_meetings()
-        if needle in f"{m.name} {m.title} {m.created_at}".lower()
-    ]
+    return [m for m in list_meetings() if needle in f"{m.name} {m.title} {m.created_at}".lower()]
 
 
 def find_meeting(query: str | None) -> Meeting | None:
@@ -237,6 +237,57 @@ def import_audio(meeting: Meeting, src: Path) -> Path:
     if Path(src).resolve() != dest.resolve():  # no-op when re-processing from audio.mp3
         shutil.copyfile(src, dest)
     return dest
+
+
+def load_qa(meeting: Meeting) -> list[dict]:
+    """Return the meeting's Q&A history (list of {"q", "a", "at"}), oldest first."""
+    path = meeting.dir / QA_NAME
+    if not path.exists():
+        return []
+    items = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line:
+            items.append(json.loads(line))
+    return items
+
+
+def append_qa(meeting: Meeting, question: str, answer: str, now: datetime | None = None) -> None:
+    """Append one question/answer pair to the meeting's Q&A history."""
+    now = now or datetime.now()
+    entry = {"q": question, "a": answer, "at": now.isoformat(timespec="seconds")}
+    path = ensure_parent(meeting.dir / QA_NAME)
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
+def _snippet(text: str, needle: str, width: int = 160) -> str:
+    """Return a short excerpt of *text* around the first case-insensitive *needle*."""
+    i = text.lower().find(needle.lower())
+    if i < 0:
+        return text[:width].strip()
+    start = max(0, i - width // 2)
+    excerpt = text[start : start + width].strip()
+    return ("…" if start else "") + excerpt + ("…" if start + width < len(text) else "")
+
+
+def search(query: str) -> list[tuple[Meeting, str]]:
+    """Find meetings whose title/transcript/summary contain *query*.
+
+    Returns (meeting, snippet) pairs, newest first.
+    """
+    needle = query.strip().lower()
+    if not needle:
+        return []
+    results = []
+    for meeting in list_meetings():
+        transcript = meeting.transcript_text()
+        summary = meeting.summary_text()
+        hay = f"{meeting.title}\n{transcript}\n{summary}".lower()
+        if needle in hay:
+            body = transcript if needle in transcript.lower() else (summary or meeting.title)
+            results.append((meeting, _snippet(body, needle)))
+    return results
 
 
 def delete_meeting(name: str) -> bool:

@@ -77,6 +77,8 @@ async def on_message(message: discord.Message) -> None:
             await _handle_help(message)
         elif lowered.startswith(("question", "ask", "pytanie")):
             await _handle_question(message, command)
+        elif lowered.startswith(("search", "szukaj")):
+            await _handle_search(message, command)
         elif lowered.startswith(("list", "meetings", "lista", "spotkania")):
             await _handle_list(message)
         elif lowered.startswith(("stop", "leave", "koniec")):
@@ -239,6 +241,7 @@ async def _handle_help(message: discord.Message) -> None:
         "web UI instead*\n"
         f"• `{me} stop` — stop recording, then post the summary\n"
         f"• `{me} list` — list recent meetings with their ids\n"
+        f"• `{me} search <text>` — find meetings mentioning some text\n"
         f"• `{me} question <your question>` — ask about the most recent meeting\n"
         f"• `{me} question <id-or-date> <your question>` — ask about a specific "
         "meeting (use the id from `list`; an id is unique, a date may match several)\n"
@@ -291,11 +294,31 @@ async def _handle_question(message: discord.Message, command: str) -> None:
         await message.channel.send("That meeting doesn't have a transcript yet.")
         return
 
+    transcript = meeting.transcript_text()
+    history = store.load_qa(meeting)[-6:]  # recent turns for follow-up context
     async with message.channel.typing():
-        answer = await asyncio.to_thread(ai.answer, question, meeting.transcript_text())
+        answer = await asyncio.to_thread(lambda: ai.answer(question, transcript, history=history))
+    store.append_qa(meeting, question, answer)
 
     header = f"**{meeting.title or meeting.name}** ({meeting.created_at[:10]})\n"
     for chunk in _chunks(header + answer, 1900):
+        await message.channel.send(chunk)
+
+
+async def _handle_search(message: discord.Message, command: str) -> None:
+    _, _, rest = command.partition(" ")
+    rest = rest.strip()
+    if not rest:
+        await message.channel.send("Usage: `@me search <text>`")
+        return
+    results = store.search(rest)[:8]
+    if not results:
+        await message.channel.send(f"No meetings match “{rest}”.")
+        return
+    lines = [f"**{len(results)} match(es) for “{rest}”:**"]
+    for meeting, _snippet in results:
+        lines.append(f"• `{meeting.name}` — {meeting.title or '(no title)'}")
+    for chunk in _chunks("\n".join(lines), 1900):
         await message.channel.send(chunk)
 
 

@@ -44,8 +44,12 @@ class ExtractionSettings:
 
     # Claude model for summary + Q&A.
     claude_model: str = DEFAULT_CLAUDE_MODEL
-    # faster-whisper model size for transcription.
+    # faster-whisper model size for the accurate ("deep") transcription pass.
     whisper_model: str = DEFAULT_MODEL
+    # Two-pass transcription: a fast preview first, then refine with whisper_model.
+    two_pass: bool = True
+    # Fast model used for the quick preview pass.
+    preview_model: str = "small"
     # Transcription language code (e.g. "pl", "en"); None = auto-detect.
     language: str | None = DEFAULT_LANGUAGE
     # System prompt that frames the summariser's role.
@@ -108,9 +112,13 @@ class ExtractionSettings:
         return settings
 
 
-def load_settings(path: Path = SETTINGS_FILE) -> ExtractionSettings:
-    """Return the saved settings, creating the file with defaults if missing."""
-    path = Path(path)
+def load_settings(path: Path | None = None) -> ExtractionSettings:
+    """Return the saved settings, creating the file with defaults if missing.
+
+    Resolves ``SETTINGS_FILE`` at call time (not as a default arg) so tests and
+    callers that patch the module-level path are respected.
+    """
+    path = Path(path) if path is not None else SETTINGS_FILE
     if not path.exists():
         settings = ExtractionSettings()
         save_settings(settings, path)
@@ -119,8 +127,8 @@ def load_settings(path: Path = SETTINGS_FILE) -> ExtractionSettings:
     return ExtractionSettings.from_dict(data)
 
 
-def save_settings(settings: ExtractionSettings, path: Path = SETTINGS_FILE) -> Path:
-    """Write *settings* to *path* as pretty JSON and return the path."""
-    path = ensure_parent(Path(path))
+def save_settings(settings: ExtractionSettings, path: Path | None = None) -> Path:
+    """Write *settings* to *path* (default: current ``SETTINGS_FILE``) as JSON."""
+    path = ensure_parent(Path(path) if path is not None else SETTINGS_FILE)
     path.write_text(json.dumps(settings.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
     return path

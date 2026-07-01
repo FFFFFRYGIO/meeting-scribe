@@ -75,27 +75,53 @@ def answer(
     question: str,
     transcript: str,
     settings: ExtractionSettings | None = None,
+    history: list[dict] | None = None,
 ) -> str:
-    """Answer *question* about a meeting, grounded only in *transcript*."""
+    """Answer *question* about a meeting, grounded only in *transcript*.
+
+    *history* is a list of prior {"q", "a"} turns; when given, the question is
+    answered as a follow-up in that conversation. The transcript stays in the
+    first user turn so it's cached across follow-ups.
+    """
     settings = settings or load_settings()
     if not transcript.strip():
         return "I don't have a transcript for this meeting yet."
+    history = history or []
+
+    first_content = [
+        {"type": "text", "text": "Meeting transcript:"},
+        {"type": "text", "text": transcript, "cache_control": {"type": "ephemeral"}},
+    ]
+    messages: list[dict] = []
+    if history:
+        messages.append(
+            {
+                "role": "user",
+                "content": [
+                    *first_content,
+                    {"type": "text", "text": f"Question: {history[0]['q']}"},
+                ],
+            }
+        )
+        messages.append({"role": "assistant", "content": history[0]["a"]})
+        for turn in history[1:]:
+            messages.append({"role": "user", "content": f"Question: {turn['q']}"})
+            messages.append({"role": "assistant", "content": turn["a"]})
+        messages.append({"role": "user", "content": f"Question: {question}"})
+    else:
+        messages.append(
+            {
+                "role": "user",
+                "content": [*first_content, {"type": "text", "text": f"Question: {question}"}],
+            }
+        )
 
     client = _client()
     with client.messages.stream(
         model=settings.claude_model,
         max_tokens=_MAX_TOKENS,
         system=settings.qa_system,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": "Meeting transcript:"},
-                    {"type": "text", "text": transcript, "cache_control": {"type": "ephemeral"}},
-                    {"type": "text", "text": f"Question: {question}"},
-                ],
-            }
-        ],
+        messages=messages,
     ) as stream:
         message = stream.get_final_message()
     return _first_text(message)

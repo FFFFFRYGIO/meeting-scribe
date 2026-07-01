@@ -126,43 +126,47 @@ def index(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "index.html", {"meetings": store.list_meetings()})
 
 
+def _meeting_context(meeting: store.Meeting) -> dict:
+    return {
+        "meeting": meeting,
+        "summary": meeting.summary_text(),
+        "transcript": meeting.transcript_text(),
+        "qa": store.load_qa(meeting),
+    }
+
+
 @app.get("/meeting/{name}", response_class=HTMLResponse)
-def meeting_detail(
-    request: Request, name: str, answer: str = "", question: str = ""
-) -> HTMLResponse:
+def meeting_detail(request: Request, name: str) -> HTMLResponse:
     meeting = store.get_meeting(name)
     if meeting is None:
         return HTMLResponse("Meeting not found", status_code=404)
-    return templates.TemplateResponse(
-        request,
-        "meeting.html",
-        {
-            "meeting": meeting,
-            "summary": meeting.summary_text(),
-            "transcript": meeting.transcript_text(),
-            "answer": answer,
-            "question": question,
-        },
-    )
+    return templates.TemplateResponse(request, "meeting.html", _meeting_context(meeting))
 
 
-@app.post("/meeting/{name}/ask", response_class=HTMLResponse)
-def meeting_ask(request: Request, name: str, question: Annotated[str, Form()]) -> HTMLResponse:
+@app.post("/meeting/{name}/ask")
+def meeting_ask(name: str, question: Annotated[str, Form()]) -> RedirectResponse:
     meeting = store.get_meeting(name)
     if meeting is None:
-        return HTMLResponse("Meeting not found", status_code=404)
-    response = ai.answer(question, meeting.transcript_text())
-    return templates.TemplateResponse(
-        request,
-        "meeting.html",
-        {
-            "meeting": meeting,
-            "summary": meeting.summary_text(),
-            "transcript": meeting.transcript_text(),
-            "answer": response,
-            "question": question,
-        },
-    )
+        return RedirectResponse(url="/", status_code=303)
+    # Answer as a follow-up using the recent Q&A history, then persist the turn.
+    history = store.load_qa(meeting)[-6:]
+    response = ai.answer(question, meeting.transcript_text(), history=history)
+    store.append_qa(meeting, question, response)
+    return RedirectResponse(url=f"/meeting/{meeting.name}#qa", status_code=303)
+
+
+@app.post("/meeting/{name}/rename")
+def meeting_rename(name: str, title: Annotated[str, Form()]) -> RedirectResponse:
+    meeting = store.get_meeting(name)
+    if meeting is not None and title.strip():
+        meeting.update(title=title.strip())
+    return RedirectResponse(url=f"/meeting/{name}", status_code=303)
+
+
+@app.get("/search", response_class=HTMLResponse)
+def search_page(request: Request, q: str = "") -> HTMLResponse:
+    results = store.search(q) if q.strip() else []
+    return templates.TemplateResponse(request, "search.html", {"q": q, "results": results})
 
 
 def _locate_media(meeting: store.Meeting) -> Path | None:
@@ -218,9 +222,8 @@ def _run_pipeline(meeting_name: str, force: bool = False) -> None:
                 src.unlink(missing_ok=True)
 
 
-def _process_with_fallback(meeting: store.Meeting, media: Path, on_progress) -> None:
-    """Transcribe + summarise; if the configured model fails, retry with a lighter one."""
-    settings = load_settings()
+def _process_once(meeting: store.Meeting, media: Path, on_progress, settings) -> None:
+    """One transcribe+summarise pass; if the model fails, retry with a lighter one."""
     try:
         process_meeting(meeting, media, settings=settings, progress_callback=on_progress)
     except Exception as exc:  # noqa: BLE001
@@ -231,12 +234,26 @@ def _process_with_fallback(meeting: store.Meeting, media: Path, on_progress) -> 
             f"retrying with '{_FALLBACK_MODEL}'."
         )
         meeting.update(progress=0)
-        process_meeting(
-            meeting,
-            media,
-            settings=replace(settings, whisper_model=_FALLBACK_MODEL),
-            progress_callback=on_progress,
+        _process_once(meeting, media, on_progress, replace(settings, whisper_model=_FALLBACK_MODEL))
+
+
+def _process_with_fallback(meeting: store.Meeting, media: Path, on_progress) -> None:
+    """Transcribe + summarise, optionally in two passes (fast preview, then deep).
+
+    Two-pass gives a readable transcript + preview summary quickly with the small
+    model, then refines both with the accurate model in the background.
+    """
+    settings = load_settings()
+    if settings.two_pass and settings.whisper_model != settings.preview_model:
+        meeting.update(refining=False, progress=0)
+        _process_once(
+            meeting, media, on_progress, replace(settings, whisper_model=settings.preview_model)
         )
+        meeting.update(refining=True, progress=0)  # preview ready; now the deep pass
+        _process_once(meeting, media, on_progress, settings)
+        meeting.update(refining=False)
+    else:
+        _process_once(meeting, media, on_progress, settings)
 
 
 def _autotitle(meeting: store.Meeting) -> None:

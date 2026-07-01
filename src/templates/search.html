@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Search · Meeting Scribe{% endblock %}
+{% block content %}
+  <div class="card">
+    <h2>Search</h2>
+    <form action="/search" method="get">
+      <div class="row">
+        <div class="grow"><input type="text" name="q" value="{{ q }}" placeholder="Find text in titles, transcripts, summaries" autofocus></div>
+        <div><button type="submit">Search</button></div>
+      </div>
+    </form>
+  </div>
+
+  {% if q %}
+  <div class="card">
+    <h2>{{ results|length }} result{{ '' if results|length == 1 else 's' }} for “{{ q }}”</h2>
+    {% if not results %}
+      <p class="muted">Nothing matched.</p>
+    {% else %}
+      {% for m, snippet in results %}
+        <div class="list-item">
+          <div class="grow">
+            <a href="/meeting/{{ m.name }}"><strong>{{ m.title or m.name }}</strong></a>
+            <div class="muted">{{ m.created_at }}</div>
+            <div class="muted" style="margin-top:4px">{{ snippet }}</div>
+          </div>
+        </div>
+      {% endfor %}
+    {% endif %}
+  </div>
+  {% endif %}
+{% endblock %}

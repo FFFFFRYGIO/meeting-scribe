@@ -23,6 +23,10 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(store, "RESULTS_DIR", tmp_path / "results")
     (tmp_path / "results").mkdir()
     monkeypatch.setattr(settings_mod, "SETTINGS_FILE", tmp_path / "settings.json")
+    # Single-pass by default so call counts are deterministic (a test can override).
+    settings_mod.save_settings(
+        settings_mod.ExtractionSettings(two_pass=False), tmp_path / "settings.json"
+    )
     # Auth is disabled unless a test opts in (keeps these tests hermetic).
     monkeypatch.delenv("AUTH_USERNAME", raising=False)
     monkeypatch.delenv("AUTH_PASSWORD", raising=False)
@@ -61,13 +65,65 @@ def test_settings_save_round_trip(client, monkeypatch):
     assert saved["s"].language == "pl"
 
 
-def test_ask_uses_ai_answer(client, monkeypatch):
+def test_ask_saves_and_shows_qa_history(client, monkeypatch):
     m = store.create_meeting(title="Q meeting")
     store.save_transcript(m, "Bob owns the docs.")
-    monkeypatch.setattr(ai, "answer", lambda q, t: f"answer to: {q}")
+    monkeypatch.setattr(ai, "answer", lambda q, t, **k: f"answer to: {q}")
 
+    # POST-redirect-GET: the answer is persisted and shown in the Q&A history.
     body = client.post(f"/meeting/{m.name}/ask", data={"question": "who?"}).text
-    assert "answer to: who?" in body
+    assert "answer to: who?" in body and "who?" in body
+    assert [t["q"] for t in store.load_qa(m)] == ["who?"]
+
+
+def test_ask_passes_history_for_followups(client, monkeypatch):
+    m = store.create_meeting(title="threaded")
+    store.save_transcript(m, "transcript")
+    store.append_qa(m, "first?", "first answer")
+    seen = {}
+    monkeypatch.setattr(
+        ai, "answer", lambda q, t, **k: seen.update(history=k.get("history")) or "ok"
+    )
+
+    client.post(f"/meeting/{m.name}/ask", data={"question": "second?"})
+    assert [h["q"] for h in seen["history"]] == ["first?"]  # prior turn passed as context
+
+
+def test_search_finds_text(client):
+    m = store.create_meeting(title="Budget review")
+    store.save_transcript(m, "We agreed the marketing budget is 50k.")
+    body = client.get("/search", params={"q": "marketing budget"}).text
+    assert "Budget review" in body and "marketing budget" in body
+    assert "0 results" in client.get("/search", params={"q": "zzz-nope"}).text
+
+
+def test_rename_updates_title(client):
+    m = store.create_meeting(title="old")
+    client.post(f"/meeting/{m.name}/rename", data={"title": "New name"}, follow_redirects=False)
+    assert store.get_meeting(m.name).title == "New name"
+
+
+def test_two_pass_runs_preview_then_deep(client, monkeypatch):
+    settings_mod.save_settings(
+        settings_mod.ExtractionSettings(
+            two_pass=True, preview_model="small", whisper_model="large-v3"
+        ),
+        settings_mod.SETTINGS_FILE,
+    )
+    models = []
+
+    def fake_process(meeting, media, *a, settings=None, **k):
+        models.append(settings.whisper_model)
+        store.save_transcript(meeting, "t")
+        store.save_summary(meeting, "s")
+
+    monkeypatch.setattr(web, "process_meeting", fake_process)
+    client.post(
+        "/upload",
+        files={"file": ("c.mp3", b"x", "audio/mpeg")},
+        follow_redirects=False,
+    )
+    assert models == ["small", "large-v3"]  # fast preview first, then the deep pass
 
 
 def test_upload_redirects_and_processes_in_background(client, monkeypatch):

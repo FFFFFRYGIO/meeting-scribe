@@ -60,6 +60,9 @@
 <body>
   <header>
     <h1><a href="/">📝 Meeting Scribe</a></h1>
+    <form action="/search" method="get" style="margin-left:auto; max-width:340px; flex:1;">
+      <input type="text" name="q" value="{{ q or '' }}" placeholder="Search meetings…">
+    </form>
     <nav>
       <a href="/">Meetings</a>
       <a href="/settings">Settings</a>
