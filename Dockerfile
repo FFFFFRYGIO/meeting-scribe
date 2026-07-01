@@ -28,8 +28,9 @@ RUN uv sync --frozen --no-dev
 RUN mkdir -p data results
 VOLUME ["/app/data", "/app/results"]
 
-# Whisper model cache (downloaded on first transcription).
-ENV HF_HOME=/app/.cache/huggingface
+# Whisper model cache — on the persisted /app/data volume so the (large) model
+# is downloaded only once and survives redeploys.
+ENV HF_HOME=/app/data/hf-cache
 
 EXPOSE 8000
 
