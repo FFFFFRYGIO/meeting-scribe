@@ -275,10 +275,12 @@ def _run_pipeline(meeting_name: str, force: bool = False) -> None:
     except Exception as exc:  # noqa: BLE001 — record the failure for the UI
         meeting.update(status="error", error=str(exc))
     finally:
-        # Once we have the audio + transcript, drop the raw upload to save space.
+        # Once we have the audio + transcript, the original video/recording isn't
+        # needed — drop the raw upload and the redundant extracted copy to save space.
+        # (We keep audio.mp3 for the player and re-processing.)
         if meeting.audio_path.exists() and meeting.transcript_text().strip():
-            for src in meeting.dir.glob("source.*"):
-                src.unlink(missing_ok=True)
+            for leftover in [*meeting.dir.glob("source.*"), meeting.dir / "extracted.mp3"]:
+                leftover.unlink(missing_ok=True)
 
 
 def _process_once(meeting: store.Meeting, media: Path, on_progress, settings) -> None:
