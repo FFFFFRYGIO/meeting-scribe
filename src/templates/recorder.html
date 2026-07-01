@@ -118,7 +118,12 @@
 
       startBtn.addEventListener('click', start);
       stopBtn.addEventListener('click', stop);
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+
+      // Recording APIs only work in a secure context (HTTPS or localhost).
+      if (!window.isSecureContext) {
+        setStatus('⚠️ Recording needs a secure connection. Open this page over https:// (not http://).');
+        startBtn.disabled = true;
+      } else if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
         setStatus('This browser cannot capture tab audio. Use desktop Chrome or Edge.');
         startBtn.disabled = true;
       }
