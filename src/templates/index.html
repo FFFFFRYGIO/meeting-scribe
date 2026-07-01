@@ -9,6 +9,17 @@
           <label for="title">Title (optional)</label>
           <input type="text" id="title" name="title" placeholder="e.g. Weekly standup">
         </div>
+        <div class="grow">
+          <label for="project">Project</label>
+          <select id="project" name="project">
+            <option value="">—</option>
+            {% for p in projects %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="grow">
+          <label for="project_custom">…or another project</label>
+          <input type="text" id="project_custom" name="project_custom" placeholder="type a project">
+        </div>
       </div>
       <label for="file">File</label>
       <input type="file" id="file" name="file" required>
@@ -26,6 +37,7 @@
           <div class="grow">
             <a href="/meeting/{{ m.name }}"><strong>{{ m.title or m.name }}</strong></a>
             <div class="muted">{{ m.created_at }}
+              {% if m.project %} · 📁 {{ m.project }}{% endif %}
               {% if m.channel %} · #{{ m.channel }}{% endif %}
               {% if m.participants %} · {{ m.participants | join(", ") }}{% endif %}
             </div>

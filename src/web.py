@@ -27,6 +27,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 import ai
 import store
+from config import PROJECT_OPTIONS
 from process import process_meeting, summarize_meeting
 from settings import ExtractionSettings, Section, load_settings, save_settings
 
@@ -123,7 +124,16 @@ def healthz() -> dict:
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse(request, "index.html", {"meetings": store.list_meetings()})
+    return templates.TemplateResponse(
+        request,
+        "index.html",
+        {"meetings": store.list_meetings(), "projects": PROJECT_OPTIONS},
+    )
+
+
+def _resolve_project(select: str, custom: str) -> str:
+    """A typed-in project wins over the dropdown selection."""
+    return custom.strip() or select.strip()
 
 
 def _meeting_context(meeting: store.Meeting) -> dict:
@@ -132,6 +142,7 @@ def _meeting_context(meeting: store.Meeting) -> dict:
         "summary": meeting.summary_text(),
         "transcript": meeting.transcript_text(),
         "qa": store.load_qa(meeting),
+        "projects": PROJECT_OPTIONS,
     }
 
 
@@ -160,6 +171,18 @@ def meeting_rename(name: str, title: Annotated[str, Form()]) -> RedirectResponse
     meeting = store.get_meeting(name)
     if meeting is not None and title.strip():
         meeting.update(title=title.strip())
+    return RedirectResponse(url=f"/meeting/{name}", status_code=303)
+
+
+@app.post("/meeting/{name}/project")
+def meeting_set_project(
+    name: str,
+    project: Annotated[str, Form()] = "",
+    project_custom: Annotated[str, Form()] = "",
+) -> RedirectResponse:
+    meeting = store.get_meeting(name)
+    if meeting is not None:
+        meeting.update(project=_resolve_project(project, project_custom))
     return RedirectResponse(url=f"/meeting/{name}", status_code=303)
 
 
@@ -280,6 +303,8 @@ async def upload(
     background_tasks: BackgroundTasks,
     file: Annotated[UploadFile, File()],
     title: Annotated[str, Form()] = "",
+    project: Annotated[str, Form()] = "",
+    project_custom: Annotated[str, Form()] = "",
 ) -> RedirectResponse:
     """Accept a recording and return immediately; process it in the background.
 
@@ -289,7 +314,12 @@ async def upload(
     """
     suffix = Path(file.filename or "upload").suffix or ".mp3"
     # Leave the title empty when not given so the pipeline auto-generates one.
-    meeting = store.create_meeting(title=title.strip(), source="upload", status="processing")
+    meeting = store.create_meeting(
+        title=title.strip(),
+        source="upload",
+        project=_resolve_project(project, project_custom),
+        status="processing",
+    )
 
     media = meeting.dir / f"source{suffix}"
     with media.open("wb") as out:

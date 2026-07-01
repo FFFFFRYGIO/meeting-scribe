@@ -49,6 +49,7 @@ class Meeting:
     title: str = ""
     created_at: str = ""  # ISO-8601
     source: str = "upload"  # "discord" | "upload"
+    project: str = ""  # which project this recording belongs to
     channel: str = ""  # discord channel name, if any
     participants: list[str] = field(default_factory=list)
     duration_seconds: float | None = None
@@ -96,6 +97,7 @@ class Meeting:
             "title": self.title,
             "created_at": self.created_at,
             "source": self.source,
+            "project": self.project,
             "channel": self.channel,
             "participants": self.participants,
             "duration_seconds": self.duration_seconds,
@@ -132,6 +134,7 @@ def _load(dir: Path) -> Meeting | None:
         title=data.get("title", ""),
         created_at=data.get("created_at", ""),
         source=data.get("source", "upload"),
+        project=data.get("project", ""),
         channel=data.get("channel", ""),
         participants=data.get("participants", []) or [],
         duration_seconds=data.get("duration_seconds"),
@@ -186,6 +189,7 @@ def create_meeting(
     *,
     title: str = "",
     source: str = "upload",
+    project: str = "",
     channel: str = "",
     participants: list[str] | None = None,
     name: str | None = None,
@@ -210,6 +214,7 @@ def create_meeting(
         title=title,
         created_at=now.isoformat(timespec="seconds"),
         source=source,
+        project=project,
         channel=channel,
         participants=participants or [],
         status=status,

@@ -113,6 +113,34 @@ def test_ask_all_uses_corpus(client, monkeypatch):
     assert "Budget review" in captured["corpus"] and captured["q"] == "budget?"
 
 
+def test_upload_sets_project(client, monkeypatch):
+    monkeypatch.setattr(web, "process_meeting", lambda *a, **k: None)
+    client.post(
+        "/upload",
+        data={"project": "DroneScanner"},
+        files={"file": ("c.mp3", b"x", "audio/mpeg")},
+        follow_redirects=False,
+    )
+    assert store.list_meetings()[0].project == "DroneScanner"
+
+
+def test_upload_custom_project_overrides_dropdown(client, monkeypatch):
+    monkeypatch.setattr(web, "process_meeting", lambda *a, **k: None)
+    client.post(
+        "/upload",
+        data={"project": "DocCompan", "project_custom": "Inne"},
+        files={"file": ("c.mp3", b"x", "audio/mpeg")},
+        follow_redirects=False,
+    )
+    assert store.list_meetings()[0].project == "Inne"
+
+
+def test_set_project_route(client):
+    m = store.create_meeting(title="x")
+    client.post(f"/meeting/{m.name}/project", data={"project": "DocCompan"}, follow_redirects=False)
+    assert store.get_meeting(m.name).project == "DocCompan"
+
+
 def test_rename_updates_title(client):
     m = store.create_meeting(title="old")
     client.post(f"/meeting/{m.name}/rename", data={"title": "New name"}, follow_redirects=False)

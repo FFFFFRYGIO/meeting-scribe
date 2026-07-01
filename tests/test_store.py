@@ -32,6 +32,11 @@ def test_create_meeting_writes_metadata(meetings_dir):
     assert reloaded.source == "discord"
 
 
+def test_project_round_trip(meetings_dir):
+    m = store.create_meeting(title="x", project="DroneScanner")
+    assert store.get_meeting(m.name).project == "DroneScanner"
+
+
 def test_save_transcript_and_summary(meetings_dir):
     m = store.create_meeting(title="x")
     store.save_transcript(m, "hello world")

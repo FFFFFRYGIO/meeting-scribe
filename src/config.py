@@ -23,6 +23,9 @@ RESULTS_DIR: Path = PROJECT_ROOT / "results"
 DEFAULT_MODEL: str = "large-v3"  # faster-whisper model size
 DEFAULT_LANGUAGE: str | None = None  # None = auto-detect
 
+# Known projects offered in the UI dropdown (a free-text project is also allowed).
+PROJECT_OPTIONS: list[str] = ["DroneScanner", "DocCompan"]
+
 # Prefix used when generating a default run name.
 RUN_NAME_PREFIX: str = "meeting"
 # Timestamp format used in default run names; filesystem-safe on every OS.
