@@ -47,14 +47,8 @@
         <div class="spinner"></div>
         <div>
           {% if meeting.note %}
-            {# Live stage text (e.g. joining/recording a Google Meet). #}
             <h2>{{ meeting.note }}</h2>
             <p class="muted" style="margin:0">This page refreshes automatically.</p>
-            {% if meeting.source == "meet" %}
-            <form action="/meeting/{{ meeting.name }}/stop-recording" method="post" style="margin-top:10px">
-              <button type="submit">Stop &amp; process</button>
-            </form>
-            {% endif %}
           {% else %}
           {% if meeting.refining %}
             <h2>Refining with the accurate model…</h2>

@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}Recorder · Meeting Scribe{% endblock %}
+{% block content %}
+  <div class="card">
+    <h2>Record a meeting from this laptop</h2>
+    <p class="muted">Run this on the computer that's in the call. It captures the shared
+    tab/window audio plus your microphone, and uploads the recording here when you stop —
+    no server-side browser needed.</p>
+
+    <div class="row">
+      <div class="grow">
+        <label for="title">Title (optional)</label>
+        <input type="text" id="title" placeholder="auto-generated if blank">
+      </div>
+      <div class="grow">
+        <label for="project">Project</label>
+        <select id="project">
+          <option value="">—</option>
+          {% for p in projects %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="grow">
+        <label for="project_custom">…or another project</label>
+        <input type="text" id="project_custom" placeholder="type a project">
+      </div>
+    </div>
+
+    <label style="margin-top:12px"><input type="checkbox" id="mic" checked> Also record my microphone</label>
+
+    <p style="margin-top:14px">
+      <button id="start" type="button">Start recording</button>
+      <button id="stop" type="button" class="secondary" disabled>Stop &amp; upload</button>
+    </p>
+
+    <div id="status" class="muted"></div>
+
+    <ol class="muted" style="margin-top:14px; line-height:1.6">
+      <li>Click <b>Start recording</b>.</li>
+      <li>In the share dialog, pick the <b>meeting tab</b> (or the whole screen) and
+      <b>enable “Share tab audio”</b> — without it, other participants won't be recorded.</li>
+      <li>When the call ends, click <b>Stop &amp; upload</b>. You'll get a link to the meeting.</li>
+    </ol>
+  </div>
+
+  <script>
+    (function () {
+      const startBtn = document.getElementById('start');
+      const stopBtn = document.getElementById('stop');
+      const statusEl = document.getElementById('status');
+      let recorder, chunks, displayStream, micStream, audioCtx;
+
+      function setStatus(msg) { statusEl.textContent = msg; }
+
+      async function start() {
+        chunks = [];
+        try {
+          displayStream = await navigator.mediaDevices.getDisplayMedia({
+            video: true, audio: true,
+          });
+        } catch (e) { setStatus('Screen/tab share was cancelled or denied.'); return; }
+
+        const displayAudio = displayStream.getAudioTracks();
+        if (displayAudio.length === 0) {
+          setStatus('No tab/system audio was shared — restart and enable “Share tab audio”.');
+          displayStream.getTracks().forEach(t => t.stop());
+          return;
+        }
+
+        // Mix shared audio + (optional) mic into one stream.
+        audioCtx = new AudioContext();
+        const dest = audioCtx.createMediaStreamDestination();
+        audioCtx.createMediaStreamSource(new MediaStream(displayAudio)).connect(dest);
+
+        if (document.getElementById('mic').checked) {
+          try {
+            micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            audioCtx.createMediaStreamSource(micStream).connect(dest);
+          } catch (e) { setStatus('Microphone denied — recording tab audio only.'); }
+        }
+
+        recorder = new MediaRecorder(dest.stream, { mimeType: 'audio/webm' });
+        recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+        recorder.onstop = upload;
+        // If the user stops sharing from the browser UI, stop the recording too.
+        displayStream.getVideoTracks()[0].addEventListener('ended', () => { if (recorder.state !== 'inactive') recorder.stop(); });
+
+        recorder.start();
+        startBtn.disabled = true; stopBtn.disabled = false;
+        setStatus('🔴 Recording… keep this tab open.');
+      }
+
+      function stop() {
+        stopBtn.disabled = true;
+        setStatus('Finishing…');
+        if (recorder && recorder.state !== 'inactive') recorder.stop();
+      }
+
+      async function upload() {
+        [displayStream, micStream].forEach(s => s && s.getTracks().forEach(t => t.stop()));
+        if (audioCtx) audioCtx.close();
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        setStatus('Uploading ' + Math.round(blob.size / 1024) + ' KB…');
+        const fd = new FormData();
+        fd.append('file', blob, 'recording.webm');
+        fd.append('title', document.getElementById('title').value);
+        fd.append('project', document.getElementById('project_custom').value.trim() || document.getElementById('project').value);
+        try {
+          const r = await fetch('/api/upload', { method: 'POST', body: fd });
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          const data = await r.json();
+          setStatus('✅ Uploaded. Processing…');
+          window.location = data.url;
+        } catch (e) {
+          setStatus('Upload failed: ' + e.message + '. The recording is still in memory — try Stop again.');
+          startBtn.disabled = false;
+        }
+      }
+
+      startBtn.addEventListener('click', start);
+      stopBtn.addEventListener('click', stop);
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+        setStatus('This browser cannot capture tab audio. Use desktop Chrome or Edge.');
+        startBtn.disabled = true;
+      }
+    })();
+  </script>
+{% endblock %}

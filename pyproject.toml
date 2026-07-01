@@ -17,7 +17,6 @@ dependencies = [
     "markdown>=3.6",
     # pydub imports the stdlib `audioop`, removed in Python 3.13+; this backports it.
     "audioop-lts>=0.2.1; python_version >= '3.13'",
-    "playwright>=1.61.0",
 ]
 
 [project.scripts]

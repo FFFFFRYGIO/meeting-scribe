@@ -19,9 +19,10 @@ without touching code.
 
 ## Features
 
-- 🎥 **Google Meet recording** — a bot joins a Meet link, records the call, then
-  transcribes & summarises it. Best-effort browser automation; see
-  [docs/GOOGLE_MEET.md](docs/GOOGLE_MEET.md).
+- 🎥 **Laptop recorder** — a zero-install browser page (`/recorder`) run on the
+  laptop that's in the call captures the meeting tab audio + mic and uploads it to
+  the server, which transcribes & summarises it. Works for Google Meet, Zoom, etc.
+  See [docs/RECORDER.md](docs/RECORDER.md).
 - 🎙️ **Discord recording** — mention the bot to make it join your voice channel
   and record; mention `stop` to finish. *(Currently blocked upstream by Discord's
   DAVE encryption — see [docs/RECORDING.md](docs/RECORDING.md).)*

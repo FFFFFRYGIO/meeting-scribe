@@ -141,6 +141,26 @@ def test_set_project_route(client):
     assert store.get_meeting(m.name).project == "DocCompan"
 
 
+def test_recorder_page_renders(client):
+    body = client.get("/recorder").text
+    assert "Start recording" in body and "/api/upload" in body
+
+
+def test_api_upload_creates_meeting_and_returns_json(client, monkeypatch):
+    monkeypatch.setattr(web, "_recorder_job", lambda *a, **k: None)  # skip ffmpeg/pydub
+    resp = client.post(
+        "/api/upload",
+        data={"title": "Laptop sync", "project": "DroneScanner"},
+        files={"file": ("recording.webm", b"AUDIO", "audio/webm")},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["url"] == f"/meeting/{data['name']}"
+    m = store.get_meeting(data["name"])
+    assert m.source == "recorder" and m.project == "DroneScanner" and m.status == "processing"
+    assert any(p.name.startswith("source") for p in m.dir.iterdir())  # blob saved to disk
+
+
 def test_rename_updates_title(client):
     m = store.create_meeting(title="old")
     client.post(f"/meeting/{m.name}/rename", data={"title": "New name"}, follow_redirects=False)
