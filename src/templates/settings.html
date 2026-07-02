@@ -7,6 +7,12 @@
     {% if saved %}<p style="color:#7ee787">Saved.</p>{% endif %}
 
     <form action="/settings" method="post">
+      <label style="display:flex;align-items:center;gap:8px;font-weight:600">
+        <input type="checkbox" name="summarize" value="1" style="width:auto"{% if settings.summarize %} checked{% endif %}>
+        Generate AI summary
+      </label>
+      <p class="muted" style="margin-top:4px">Uncheck to run local extraction only: audio is transcribed to a transcript, and no Claude call is made (no <code>ANTHROPIC_API_KEY</code> needed). When no key is set, the summary is skipped automatically so processing still succeeds. Q&amp;A and the auto-generated title still require the key.</p>
+
       <div class="row">
         <div class="grow">
           <label for="claude_model">Claude model</label>

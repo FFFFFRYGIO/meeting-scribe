@@ -11,12 +11,23 @@ automatically).
 
 from __future__ import annotations
 
+import os
+
 from anthropic import Anthropic
 
 from settings import ExtractionSettings, load_settings
 
 # Streamed so large transcripts don't trip the SDK's non-streaming timeout.
 _MAX_TOKENS = 8000
+
+
+def available() -> bool:
+    """Whether an Anthropic API key is configured, so LLM calls can run.
+
+    Lets callers skip summary/Q&A (transcript-only mode) instead of hard-failing
+    on an auth error when no ``ANTHROPIC_API_KEY`` is set.
+    """
+    return bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
 
 
 def _client() -> Anthropic:

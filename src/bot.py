@@ -29,7 +29,7 @@ from pydub import AudioSegment
 
 import ai
 import store
-from process import summarize_meeting
+from process import should_summarize, summarize_meeting
 from settings import load_settings
 from transcribe import transcribe
 
@@ -216,7 +216,8 @@ def _render_and_summarise(sink: WaveSink, meeting: store.Meeting, participants, 
         model_size=settings.whisper_model,
         language=settings.language,
     )
-    summarize_meeting(meeting, settings)
+    if should_summarize(settings):
+        summarize_meeting(meeting, settings)
 
 
 def _mix_tracks(sink: WaveSink) -> AudioSegment:

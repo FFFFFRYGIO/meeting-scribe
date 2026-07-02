@@ -23,6 +23,11 @@
       </div>
       <label for="file">File</label>
       <input type="file" id="file" name="file" required>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:14px">
+        <input type="checkbox" id="summarize" name="summarize" value="1" style="width:auto"{% if settings.summarize %} checked{% endif %}>
+        Generate AI summary
+      </label>
+      <p class="muted" style="margin-top:4px">Uncheck to transcribe only — no Claude call, no <code>ANTHROPIC_API_KEY</code> needed.</p>
       <p style="margin-top:14px"><button type="submit">Upload &amp; process</button></p>
     </form>
   </div>

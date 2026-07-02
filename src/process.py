@@ -11,12 +11,28 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
+import ai
 from ai import summarize
 from config import classify_media
 from extract_audio import extract_audio
 from settings import ExtractionSettings, load_settings
 from store import Meeting, import_audio, save_summary, save_transcript
 from transcribe import transcribe
+
+
+def should_summarize(settings: ExtractionSettings) -> bool:
+    """Whether the AI summary/title step should run for this meeting.
+
+    Summaries run only when the user has them enabled *and* an API key is
+    present. A missing key means transcript-only mode: skip the Claude call
+    gracefully instead of hard-failing the whole meeting on an auth error.
+    """
+    if not settings.summarize:
+        return False
+    if not ai.available():
+        print("Summary skipped: no ANTHROPIC_API_KEY set — keeping the transcript only.")
+        return False
+    return True
 
 
 def transcribe_meeting(
@@ -69,10 +85,15 @@ def process_meeting(
     settings: ExtractionSettings | None = None,
     progress_callback: Callable[[float], None] | None = None,
 ) -> Meeting:
-    """Full pipeline: transcribe *media*, then summarise, into *meeting*."""
+    """Full pipeline: transcribe *media*, then (optionally) summarise, into *meeting*.
+
+    When summaries are disabled (or no API key is set), processing stops at the
+    transcript: no Claude call is made, so the pipeline needs no Anthropic key.
+    """
     settings = settings or load_settings()
     transcribe_meeting(meeting, media, settings, progress_callback)
-    summarize_meeting(meeting, settings)
+    if should_summarize(settings):
+        summarize_meeting(meeting, settings)
     return meeting
 
 
@@ -88,5 +109,6 @@ def save_and_process_transcript(
     """
     settings = settings or load_settings()
     save_transcript(meeting, transcript)
-    summarize_meeting(meeting, settings)
+    if should_summarize(settings):
+        summarize_meeting(meeting, settings)
     return meeting
