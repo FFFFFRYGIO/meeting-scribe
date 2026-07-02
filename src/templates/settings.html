@@ -11,7 +11,7 @@
         <input type="checkbox" name="summarize" value="1" style="width:auto"{% if settings.summarize %} checked{% endif %}>
         Generate AI summary
       </label>
-      <p class="muted" style="margin-top:4px">Uncheck to run local extraction only: audio is transcribed to a transcript, and no Claude call is made (no <code>ANTHROPIC_API_KEY</code> needed). Q&amp;A and the auto-generated title still require the key.</p>
+      <p class="muted" style="margin-top:4px">Uncheck to run local extraction only: audio is transcribed to a transcript, and no Claude call is made (no <code>ANTHROPIC_API_KEY</code> needed). When no key is set, the summary is skipped automatically so processing still succeeds. Q&amp;A and the auto-generated title still require the key.</p>
 
       <div class="row">
         <div class="grow">

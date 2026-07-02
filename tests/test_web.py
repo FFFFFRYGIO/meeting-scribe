@@ -32,6 +32,9 @@ def client(tmp_path, monkeypatch):
     monkeypatch.delenv("AUTH_PASSWORD", raising=False)
     # Stub auto-title so tests never hit the network (a test can override).
     monkeypatch.setattr(ai, "title", lambda *a, **k: "")
+    # Pretend an API key is configured so summaries run (a test can override to
+    # simulate the no-key path). Keeps tests independent of the real env.
+    monkeypatch.setattr(ai, "available", lambda: True)
     return TestClient(web.app)
 
 
@@ -79,10 +82,8 @@ def test_settings_save_persists_summarize_toggle(client, monkeypatch):
 
 
 def test_transcript_only_mode_skips_claude(client, monkeypatch):
-    settings_mod.save_settings(
-        settings_mod.ExtractionSettings(two_pass=False, summarize=False)
-    )
-    m = store.create_meeting(title="", status="error")  # blank title → would auto-title
+    # Per-meeting opt-out (e.g. the upload checkbox was unchecked).
+    m = store.create_meeting(title="", status="error", summarize=False)  # blank → would auto-title
     store.save_transcript(m, "some transcript text")
 
     called = {"summarize": 0, "title": 0}
@@ -96,6 +97,27 @@ def test_transcript_only_mode_skips_claude(client, monkeypatch):
     resp = client.post(f"/meeting/{m.name}/reprocess", follow_redirects=False)
     assert resp.status_code == 303
     # No Anthropic calls at all: neither the summary nor the auto-title runs.
+    assert called == {"summarize": 0, "title": 0}
+    assert store.get_meeting(m.name).status == "done"
+
+
+def test_missing_api_key_skips_summary_instead_of_failing(client, monkeypatch):
+    # Summaries enabled (default), but no API key configured.
+    monkeypatch.setattr(ai, "available", lambda: False)
+    m = store.create_meeting(title="", status="error")  # blank title → would auto-title
+    store.save_transcript(m, "some transcript text")
+
+    called = {"summarize": 0, "title": 0}
+
+    def bump(key):
+        called[key] += 1
+
+    monkeypatch.setattr(web, "summarize_meeting", lambda *a, **k: bump("summarize"))
+    monkeypatch.setattr(ai, "title", lambda *a, **k: bump("title") or "X")
+
+    resp = client.post(f"/meeting/{m.name}/reprocess", follow_redirects=False)
+    assert resp.status_code == 303
+    # No Claude call despite summaries being on, and the meeting still succeeds.
     assert called == {"summarize": 0, "title": 0}
     assert store.get_meeting(m.name).status == "done"
 
@@ -157,6 +179,27 @@ def test_upload_sets_project(client, monkeypatch):
         follow_redirects=False,
     )
     assert store.list_meetings()[0].project == "DroneScanner"
+
+
+def test_upload_summarize_checkbox_sets_meeting_flag(client, monkeypatch):
+    monkeypatch.setattr(web, "process_meeting", lambda *a, **k: None)
+
+    # Checkbox present → summary on for this meeting.
+    client.post(
+        "/upload",
+        data={"summarize": "1"},
+        files={"file": ("a.mp3", b"x", "audio/mpeg")},
+        follow_redirects=False,
+    )
+    assert store.list_meetings()[0].summarize is True
+
+    # Checkbox absent (unchecked) → transcript-only for this meeting.
+    client.post(
+        "/upload",
+        files={"file": ("b.mp3", b"x", "audio/mpeg")},
+        follow_redirects=False,
+    )
+    assert store.list_meetings()[0].summarize is False
 
 
 def test_upload_custom_project_overrides_dropdown(client, monkeypatch):
@@ -396,7 +439,12 @@ def test_upload_auto_titles_when_blank(client, monkeypatch):
         store.save_summary(meeting, "s")
 
     monkeypatch.setattr(web, "process_meeting", fake_process)
-    client.post("/upload", files={"file": ("x.mp3", b"x", "audio/mpeg")}, follow_redirects=False)
+    client.post(
+        "/upload",
+        data={"summarize": "1"},  # summary on → auto-title runs
+        files={"file": ("x.mp3", b"x", "audio/mpeg")},
+        follow_redirects=False,
+    )
     assert store.list_meetings()[0].title == "Sprint Planning"
 
 

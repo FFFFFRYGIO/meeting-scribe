@@ -81,6 +81,7 @@ class Meeting:
     progress: int = 0  # transcription progress percent (0-100) while processing
     refining: bool = False  # True during the deep (2nd) transcription pass
     note: str = ""  # transient status text shown while processing (e.g. Meet stage)
+    summarize: bool = True  # run the AI summary step for this meeting (per-upload choice)
 
     # ---- derived paths -------------------------------------------------
     @property
@@ -130,6 +131,7 @@ class Meeting:
             "progress": self.progress,
             "refining": self.refining,
             "note": self.note,
+            "summarize": self.summarize,
         }
 
     def save_metadata(self) -> None:
@@ -175,6 +177,7 @@ def _load(dir: Path) -> Meeting | None:
         progress=data.get("progress", 0),
         refining=data.get("refining", False),
         note=data.get("note", ""),
+        summarize=data.get("summarize", True),  # default keeps old meetings valid
     )
 
 
@@ -227,6 +230,7 @@ def create_meeting(
     participants: list[str] | None = None,
     name: str | None = None,
     status: str = "done",
+    summarize: bool = True,
     now: datetime | None = None,
 ) -> Meeting:
     """Create a new meeting folder with metadata and return it.
@@ -251,6 +255,7 @@ def create_meeting(
         channel=channel,
         participants=participants or [],
         status=status,
+        summarize=summarize,
     )
     meeting.dir.mkdir(parents=True, exist_ok=True)
     meeting.save_metadata()

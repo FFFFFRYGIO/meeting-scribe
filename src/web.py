@@ -28,7 +28,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 import ai
 import store
 from config import PROJECT_OPTIONS
-from process import process_meeting, summarize_meeting
+from process import process_meeting, should_summarize, summarize_meeting
 from settings import ExtractionSettings, Section, load_settings, save_settings
 
 # Model to retry with when the configured (heavier) one fails to transcribe.
@@ -136,7 +136,11 @@ def index(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
         request,
         "index.html",
-        {"meetings": store.list_meetings(), "projects": PROJECT_OPTIONS},
+        {
+            "meetings": store.list_meetings(),
+            "projects": PROJECT_OPTIONS,
+            "settings": load_settings(),  # default state of the "Generate AI summary" box
+        },
     )
 
 
@@ -258,7 +262,8 @@ def _run_pipeline(meeting_name: str, force: bool = False) -> None:
     if meeting is None:
         return
 
-    settings = load_settings()
+    # The upload's per-meeting choice overrides the global "summarize" default.
+    settings = replace(load_settings(), summarize=meeting.summarize)
     last_pct = [-1]
 
     def on_progress(fraction: float) -> None:
@@ -271,17 +276,17 @@ def _run_pipeline(meeting_name: str, force: bool = False) -> None:
         meeting.update(progress=0)
         media = _locate_media(meeting)
         if force and media is not None:
-            _process_with_fallback(meeting, media, on_progress)  # redo transcription
+            _process_with_fallback(meeting, media, on_progress, settings)  # redo transcription
         elif meeting.transcript_text().strip():
             meeting.update(progress=100)  # transcription already complete → summary stage
-            if settings.summarize:
-                summarize_meeting(meeting)
+            if should_summarize(settings):
+                summarize_meeting(meeting, settings)
         elif media is not None:
-            _process_with_fallback(meeting, media, on_progress)
+            _process_with_fallback(meeting, media, on_progress, settings)
         else:
             meeting.update(status="error", error="Source file is missing — please re-upload.")
             return
-        if settings.summarize:  # auto-title also calls Claude → skip in transcript-only mode
+        if should_summarize(settings):  # auto-title also calls Claude → skip without a key
             _autotitle(meeting)
         meeting.update(status="done", error="", progress=100)
     except Exception as exc:  # noqa: BLE001 — record the failure for the UI
@@ -310,13 +315,13 @@ def _process_once(meeting: store.Meeting, media: Path, on_progress, settings) ->
         _process_once(meeting, media, on_progress, replace(settings, whisper_model=_FALLBACK_MODEL))
 
 
-def _process_with_fallback(meeting: store.Meeting, media: Path, on_progress) -> None:
+def _process_with_fallback(meeting: store.Meeting, media: Path, on_progress, settings) -> None:
     """Transcribe + summarise, optionally in two passes (fast preview, then deep).
 
     Two-pass gives a readable transcript + preview summary quickly with the small
-    model, then refines both with the accurate model in the background.
+    model, then refines both with the accurate model in the background. *settings*
+    is the effective config (already carrying the meeting's summarize choice).
     """
-    settings = load_settings()
     if settings.two_pass and settings.whisper_model != settings.preview_model:
         meeting.update(refining=False, progress=0)
         _process_once(
@@ -370,12 +375,14 @@ async def upload(
     title: Annotated[str, Form()] = "",
     project: Annotated[str, Form()] = "",
     project_custom: Annotated[str, Form()] = "",
+    summarize: Annotated[str, Form()] = "",
 ) -> RedirectResponse:
     """Accept a recording and return immediately; process it in the background.
 
     The file is streamed to the meeting folder, the meeting is marked
     ``processing``, and transcription/summarisation run after the response so the
-    page never blocks on long recordings.
+    page never blocks on long recordings. An unchecked "Generate AI summary" box
+    is absent from the form, so this upload transcribes only (no Claude call).
     """
     suffix = Path(file.filename or "upload").suffix or ".mp3"
     # Leave the title empty when not given so the pipeline auto-generates one.
@@ -384,6 +391,7 @@ async def upload(
         source="upload",
         project=_resolve_project(project, project_custom),
         status="processing",
+        summarize=bool(summarize),
     )
 
     media = meeting.dir / f"source{suffix}"
