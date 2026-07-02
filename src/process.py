@@ -69,10 +69,15 @@ def process_meeting(
     settings: ExtractionSettings | None = None,
     progress_callback: Callable[[float], None] | None = None,
 ) -> Meeting:
-    """Full pipeline: transcribe *media*, then summarise, into *meeting*."""
+    """Full pipeline: transcribe *media*, then (optionally) summarise, into *meeting*.
+
+    When ``settings.summarize`` is False, processing stops at the transcript: no
+    Claude call is made, so the pipeline runs without an Anthropic API key.
+    """
     settings = settings or load_settings()
     transcribe_meeting(meeting, media, settings, progress_callback)
-    summarize_meeting(meeting, settings)
+    if settings.summarize:
+        summarize_meeting(meeting, settings)
     return meeting
 
 
@@ -88,5 +93,6 @@ def save_and_process_transcript(
     """
     settings = settings or load_settings()
     save_transcript(meeting, transcript)
-    summarize_meeting(meeting, settings)
+    if settings.summarize:
+        summarize_meeting(meeting, settings)
     return meeting

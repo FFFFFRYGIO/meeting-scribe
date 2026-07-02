@@ -249,6 +249,7 @@ def _run_pipeline(meeting_name: str, force: bool = False) -> None:
     if meeting is None:
         return
 
+    settings = load_settings()
     last_pct = [-1]
 
     def on_progress(fraction: float) -> None:
@@ -264,13 +265,15 @@ def _run_pipeline(meeting_name: str, force: bool = False) -> None:
             _process_with_fallback(meeting, media, on_progress)  # redo transcription
         elif meeting.transcript_text().strip():
             meeting.update(progress=100)  # transcription already complete → summary stage
-            summarize_meeting(meeting)
+            if settings.summarize:
+                summarize_meeting(meeting)
         elif media is not None:
             _process_with_fallback(meeting, media, on_progress)
         else:
             meeting.update(status="error", error="Source file is missing — please re-upload.")
             return
-        _autotitle(meeting)
+        if settings.summarize:  # auto-title also calls Claude → skip in transcript-only mode
+            _autotitle(meeting)
         meeting.update(status="done", error="", progress=100)
     except Exception as exc:  # noqa: BLE001 — record the failure for the UI
         meeting.update(status="error", error=str(exc))
@@ -450,6 +453,8 @@ async def settings_save(request: Request) -> RedirectResponse:
     defaults = ExtractionSettings()
     settings = ExtractionSettings(
         claude_model=str(form.get("claude_model", "")).strip() or defaults.claude_model,
+        # Unchecked checkboxes are absent from the form → transcript-only mode.
+        summarize=form.get("summarize") is not None,
         whisper_model=str(form.get("whisper_model", "")).strip() or defaults.whisper_model,
         language=(str(form.get("language", "")).strip() or None),
         summary_system=str(form.get("summary_system", "")).strip(),

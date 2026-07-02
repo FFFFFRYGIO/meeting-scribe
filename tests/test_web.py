@@ -65,6 +65,41 @@ def test_settings_save_round_trip(client, monkeypatch):
     assert saved["s"].language == "pl"
 
 
+def test_settings_save_persists_summarize_toggle(client, monkeypatch):
+    saved = {}
+    monkeypatch.setattr(web, "save_settings", lambda s: saved.__setitem__("s", s))
+
+    # Checkbox present → summaries stay on.
+    client.post("/settings", data={"summarize": "1"}, follow_redirects=False)
+    assert saved["s"].summarize is True
+
+    # Checkbox absent (unchecked) → transcript-only, no Claude call.
+    client.post("/settings", data={}, follow_redirects=False)
+    assert saved["s"].summarize is False
+
+
+def test_transcript_only_mode_skips_claude(client, monkeypatch):
+    settings_mod.save_settings(
+        settings_mod.ExtractionSettings(two_pass=False, summarize=False)
+    )
+    m = store.create_meeting(title="", status="error")  # blank title → would auto-title
+    store.save_transcript(m, "some transcript text")
+
+    called = {"summarize": 0, "title": 0}
+
+    def bump(key):
+        called[key] += 1
+
+    monkeypatch.setattr(web, "summarize_meeting", lambda *a, **k: bump("summarize"))
+    monkeypatch.setattr(ai, "title", lambda *a, **k: bump("title") or "X")
+
+    resp = client.post(f"/meeting/{m.name}/reprocess", follow_redirects=False)
+    assert resp.status_code == 303
+    # No Anthropic calls at all: neither the summary nor the auto-title runs.
+    assert called == {"summarize": 0, "title": 0}
+    assert store.get_meeting(m.name).status == "done"
+
+
 def test_ask_saves_and_shows_qa_history(client, monkeypatch):
     m = store.create_meeting(title="Q meeting")
     store.save_transcript(m, "Bob owns the docs.")

@@ -216,7 +216,8 @@ def _render_and_summarise(sink: WaveSink, meeting: store.Meeting, participants, 
         model_size=settings.whisper_model,
         language=settings.language,
     )
-    summarize_meeting(meeting, settings)
+    if settings.summarize:
+        summarize_meeting(meeting, settings)
 
 
 def _mix_tracks(sink: WaveSink) -> AudioSegment:

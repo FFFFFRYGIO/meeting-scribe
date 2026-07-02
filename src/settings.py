@@ -44,6 +44,11 @@ class ExtractionSettings:
 
     # Claude model for summary + Q&A.
     claude_model: str = DEFAULT_CLAUDE_MODEL
+    # Whether to run the Claude summary (+ auto-title) step after transcription.
+    # When False, processing stops at ``transcript.txt`` — pure local extraction
+    # with no Anthropic API call, so no ANTHROPIC_API_KEY is needed. Q&A still
+    # requires the key when used.
+    summarize: bool = True
     # faster-whisper model size for the accurate ("deep") transcription pass.
     whisper_model: str = DEFAULT_MODEL
     # Two-pass transcription: a fast preview first, then refine with whisper_model.

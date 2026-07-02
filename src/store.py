@@ -16,13 +16,36 @@ inspectable. The web UI and the Discord bot both go through this module.
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
+import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
 from config import RESULTS_DIR, ensure_parent
+
+
+def _atomic_write_text(path: Path, text: str) -> Path:
+    """Write *text* to *path* atomically so concurrent readers never see it empty.
+
+    ``Path.write_text`` truncates then writes, leaving a window where a reader
+    (e.g. the auto-refreshing meeting page reading ``metadata.json`` while a
+    background thread writes progress) can observe a half-written or empty file.
+    Writing to a temp file in the same directory and ``os.replace``-ing it in is
+    atomic on POSIX and Windows, so a reader always sees the old or new content.
+    """
+    ensure_parent(path)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=f"{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        os.replace(tmp, path)
+    except BaseException:  # don't leave a stray temp file behind on failure
+        Path(tmp).unlink(missing_ok=True)
+        raise
+    return path
 
 METADATA_NAME = "metadata.json"
 TRANSCRIPT_NAME = "transcript.txt"
@@ -110,8 +133,10 @@ class Meeting:
         }
 
     def save_metadata(self) -> None:
-        path = ensure_parent(self.dir / METADATA_NAME)
-        path.write_text(json.dumps(self.metadata(), indent=2, ensure_ascii=False), encoding="utf-8")
+        _atomic_write_text(
+            self.dir / METADATA_NAME,
+            json.dumps(self.metadata(), indent=2, ensure_ascii=False),
+        )
 
     def update(self, **fields) -> Meeting:
         """Update metadata fields in place, persist, and return self."""
@@ -129,7 +154,12 @@ def _load(dir: Path) -> Meeting | None:
     meta_path = dir / METADATA_NAME
     if not meta_path.exists():
         return None
-    data = json.loads(meta_path.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        # Unreadable/corrupt metadata shouldn't 500 the page or drop every other
+        # meeting from the list; skip this one. (Atomic writes make this rare.)
+        return None
     return Meeting(
         name=data.get("name", dir.name),
         dir=dir,
@@ -228,15 +258,13 @@ def create_meeting(
 
 
 def save_transcript(meeting: Meeting, text: str) -> Path:
-    path = ensure_parent(meeting.transcript_path)
-    path.write_text(text, encoding="utf-8")
-    return path
+    # Atomic: the meeting page reads the transcript live (and the deep pass
+    # rewrites it over the preview), so readers must never catch it empty.
+    return _atomic_write_text(meeting.transcript_path, text)
 
 
 def save_summary(meeting: Meeting, text: str) -> Path:
-    path = ensure_parent(meeting.summary_path)
-    path.write_text(text, encoding="utf-8")
-    return path
+    return _atomic_write_text(meeting.summary_path, text)
 
 
 def import_audio(meeting: Meeting, src: Path) -> Path:
