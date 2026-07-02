@@ -375,6 +375,19 @@ def test_download_routes(client):
     assert client.get(f"/meeting/{m.name}/download/bogus").status_code == 404
 
 
+def test_download_transcript_text_strips_timestamps(client):
+    m = store.create_meeting(title="plain")
+    store.save_transcript(m, "[0:00] hello there\n[0:05] second line")
+    r = client.get(f"/meeting/{m.name}/download/transcript-text")
+    assert r.status_code == 200
+    assert "attachment" in r.headers.get("content-disposition", "")
+    assert r.text == "hello there\nsecond line"  # no [m:ss] prefixes
+
+
+def test_strip_timestamps_leaves_plain_lines_untouched():
+    assert web.strip_timestamps("[1:05] hi\nno stamp") == "hi\nno stamp"
+
+
 def test_upload_auto_titles_when_blank(client, monkeypatch):
     monkeypatch.setattr(ai, "title", lambda *a, **k: "Sprint Planning")
 

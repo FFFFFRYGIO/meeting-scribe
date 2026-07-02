@@ -44,6 +44,15 @@ def _ts_to_seconds(ts: str) -> int:
     )
 
 
+def strip_timestamps(text: str) -> str:
+    """Return the transcript as plain prose, dropping the ``[m:ss]`` prefixes."""
+    lines = []
+    for line in (text or "").splitlines():
+        m = _TS.match(line)
+        lines.append(m.group(2) if m else line)
+    return "\n".join(lines)
+
+
 def render_transcript_html(text: str) -> str:
     """Render a transcript to HTML, turning ``[m:ss]`` prefixes into seek links."""
     lines = []
@@ -421,6 +430,17 @@ def meeting_download(name: str, kind: str) -> Response:
             meeting.transcript_path,
             media_type="text/plain",
             filename=f"{meeting.name}-transcript.txt",
+        )
+    if kind == "transcript-text" and meeting.has_transcript:
+        # Same transcript, timestamps stripped — plain prose for pasting elsewhere.
+        return Response(
+            strip_timestamps(meeting.transcript_text()),
+            media_type="text/plain",
+            headers={
+                "Content-Disposition": (
+                    f'attachment; filename="{meeting.name}-transcript-text.txt"'
+                )
+            },
         )
     return Response("Not found", status_code=404)
 
